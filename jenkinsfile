@@ -28,7 +28,6 @@ pipeline {
             to: 'uzairinayat42@gmail.com',
             subject: 'Jenkins Success',
             body: 'Pipeline completed successfully',
-            attachLog: true
         )
     }
 }
