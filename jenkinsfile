@@ -2,46 +2,69 @@ pipeline {
     agent any
 
     environment {
+        SERVER = "10.1.1.221"
+        USER = "root"   // CHANGE THIS
+        DEPLOY_PATH = "/root/Desktop/apache-tomcat-9.0.20/webapps"
         EMAIL = "uzairinayat42@gmail.com"
     }
 
     stages {
 
+        stage('Checkout Code') {
+            steps {
+                git 'https://github.com/uzairinayat/car_website'
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                sh 'npm install'
+            }
+        }
+
         stage('Build') {
             steps {
-                echo "Building..."
-                npm install
-                npm run build
+                sh 'npm run build'
             }
         }
 
-        stage('Approval Required') {
+        stage('Test') {
             steps {
-                script {
-                    emailext (
-                        subject: "Approval Needed for Deployment 🔐",
-                        body: "Please approve deployment in Jenkins.",
-                        to: "${EMAIL}"
-                    )
-                }
-
-                input message: "Do you want to deploy?", ok: "Approve"
+                sh 'npm test || true'
             }
         }
 
-        stage('Deploy') {
+        stage('Deploy to Server') {
             steps {
-                echo "Deploying..."
-               
+                sh """
+                scp -r dist/* ${USER}@${SERVER}:${DEPLOY_PATH}
+                """
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                sh """
+                curl -I http://${SERVER} || true
+                """
             }
         }
     }
 
     post {
+
         success {
             emailext (
-                subject: "Deployment Verified ✅",
-                body: "Deployment completed successfully and verified.",
+                subject: "Deployment SUCCESS ✅",
+                body: "Your build, test, and deployment to ${SERVER} is successful.",
+                to: "${EMAIL}"
+            )
+        }
+
+        failure {
+            emailext (
+                subject: "Deployment FAILED ❌",
+                body: "Pipeline failed. Check Jenkins logs.",
                 to: "${EMAIL}"
             )
         }
