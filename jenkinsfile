@@ -23,16 +23,29 @@ pipeline {
     }
 
     post {
-        success {
-            mail to: 'uzairinayat42@gmail.com',
-                 subject: "Jenkins Pipeline Success: Deploy Completed",
-                 body: "Good news! Your Jenkins pipeline has successfully completed all stages including deployment."
-        }
+    always {
+        script {
+            def buildStatus = currentBuild.currentResult
+            def buildUser = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')[0]?.userId ?: 'Github User'
+            
+            emailext (
+                subject: "Pipeline ${buildStatus}: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                body: """
+                    <p>This is a Jenkins  CICD pipeline status.</p>
+                    <p>Project: ${env.JOB_NAME}</p>
+                    <p>Build Number: ${env.BUILD_NUMBER}</p>
+                    <p>Build Status: ${buildStatus}</p>
+                    <p>Started by: ${buildUser}</p>
+                    <p>Build URL: <a href="${env.BUILD_URL}">${env.BUILD_URL}</a></p>
+                """,
+                to: 'uzairinayat42@gmail.com',
+                from: 'uzairinayat42@gmail.com',
+                replyTo: 'uzairinayat42@gmail.com',
+                mimeType: 'text/html',
+                attachmentsPattern: 'trivyfs.txt'
+            )
+           }
+       }
 
-        failure {
-            mail to: 'uzairinayat42@gmail.com',
-                 subject: "Jenkins Pipeline Failed",
-                 body: "Your Jenkins pipeline has failed. Please check the console output for details."
-        }
     }
 }
