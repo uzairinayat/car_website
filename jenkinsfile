@@ -12,7 +12,7 @@ pipeline {
 
         stage('Checkout') {
             steps {
-                git 'https://github.com/uzairinayat/car_website'
+                git branch: 'main', url: 'https://github.com/uzairinayat/car_website'
             }
         }
 
