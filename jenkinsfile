@@ -1,21 +1,49 @@
 pipeline {
     agent any
 
+    environment {
+        EMAIL = "uzairinayat42@gmail.com"
+    }
+
     stages {
+
         stage('Build') {
             steps {
-                echo 'Building the app'
+                echo "Building..."
+                sh 'npm install'
+                sh 'npm run build'
             }
         }
-        stage('Test') {
+
+        stage('Approval Required') {
             steps {
-                echo 'Running Test'
+                script {
+                    emailext (
+                        subject: "Approval Needed for Deployment 🔐",
+                        body: "Please approve deployment in Jenkins.",
+                        to: "${EMAIL}"
+                    )
+                }
+
+                input message: "Do you want to deploy?", ok: "Approve"
             }
         }
+
         stage('Deploy') {
             steps {
-               echo 'Deploying the app' 
+                echo "Deploying..."
+                sh 'scp -r dist/* user@server:/var/www/html'
             }
+        }
+    }
+
+    post {
+        success {
+            emailext (
+                subject: "Deployment Verified ✅",
+                body: "Deployment completed successfully and verified.",
+                to: "${EMAIL}"
+            )
         }
     }
 }
