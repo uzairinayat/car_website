@@ -32,7 +32,7 @@ pipeline {
         stage('Deploy') {
             steps {
                 echo "Deploying..."
-                sh 'scp -r dist/* user@server:/var/www/html'
+               
             }
         }
     }
