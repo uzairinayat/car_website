@@ -6,6 +6,9 @@ pipeline {
         stage('Build') {
             steps {
                 echo 'Building the app'
+
+                // Build Angular project
+                bat 'npm run build -- --configuration production'
             }
         }
 
