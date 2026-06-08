@@ -1,43 +1,81 @@
 pipeline {
     agent any
 
+    triggers {
+        githubPush()
+    }
+
     stages {
 
-        stage('Build') {
+        stage('Checkout Code') {
             steps {
-                echo 'Building the app'
-
-                // Install dependencies
-                bat 'npm install'
-                
-                // Build Angular project
-                bat 'npm run build'
-
-                echo 'Build completed'
+                echo 'Pulling latest code from GitHub'
+                git branch: 'main', url: 'https://github.com/uzairinayat/car_website.git'
             }
         }
 
-        stage('Test') {
+        stage('Install Dependencies') {
             steps {
-                echo 'Running Test'
+                echo 'Installing dependencies'
+                bat 'npm install'
+            }
+        }
 
+        stage('Build') {
+            steps {
+                echo 'Building Angular App'
+                bat 'npm run build'
+                echo 'Build completed'
             }
         }
 
         stage('Deploy') {
             steps {
                 echo 'Deploying the app'
+        
+                bat '''
+                scp -r dist\\car_website root@10.1.1.221:/root/Desktop/apache-tomcat-9.0.20/webapps/
+                '''
+            }
+        }
+
+        stage('Test') {
+            steps {
+                echo 'Running tests on build'
+
+                // Angular unit tests (headless Chrome)
+                bat 'npm run test -- --watch=false --browsers=ChromeHeadless'
             }
         }
     }
 
- post {
-    success {
-        emailext(
-            to: 'uzairinayat42@gmail.com',
-            subject: 'Jenkins Success',
-            body: 'Pipeline completed successfully',
-        )
+    post {
+
+        success {
+            emailext(
+                to: 'uzairinayat42@gmail.com',
+                subject: "Jenkins SUCCESS: Build #${env.BUILD_NUMBER}",
+                body: """
+                ✅ Pipeline Success
+
+                Project built and deployed successfully.
+                Build Number: ${env.BUILD_NUMBER}
+                """
+            )
+        }
+
+        failure {
+            emailext(
+                to: 'uzairinayat42@gmail.com',
+                subject: "Jenkins FAILED: Build #${env.BUILD_NUMBER}",
+                body: """
+                ❌ Pipeline Failed
+
+                Something went wrong in CI/CD pipeline.
+                Check Jenkins logs for details.
+                Build Number: ${env.BUILD_NUMBER}
+                """
+            )
+        }
     }
-}
 }
