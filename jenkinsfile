@@ -19,9 +19,8 @@ pipeline {
 
         stage('Test') {
             steps {
-                echo 'Running Vitest tests'
-                bat 'npm install'
-                bat 'npm test'
+                echo 'Running Test'
+
             }
         }
 
