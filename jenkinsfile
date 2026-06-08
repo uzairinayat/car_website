@@ -33,8 +33,8 @@ pipeline {
             steps {
                 echo 'Deploying the app'
         
-                bat '''
-                scp -r dist\\car_website root@10.1.1.221:/root/Desktop/apache-tomcat-9.0.20/webapps/
+                 bat '''
+                scp -r dist\\car_website\\browser\\* root@10.1.1.221:/root/Desktop/apache-tomcat-9.0.20/webapps/ROOT/
                 '''
             }
         }
