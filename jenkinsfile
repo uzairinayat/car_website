@@ -1,12 +1,14 @@
 pipeline {
     agent any
 
-   environment {
-    DEPLOY_SERVER = "root@10.1.1.221"
-    TOMCAT_PATH = "/root/Desktop/apache-tomcat-9.0.20/webapps"
-    APP_NAME = "ROOT"
-    BACKUP_PATH = "/root/Desktop/backup_ROOT"
-}
+    environment {
+        SERVER_HOST = "10.1.1.221"
+        SERVER_USER = "root"
+        SERVER_PASS = "Comp%40123"  // encoded Comp@123
+
+        TOMCAT_PATH = "/root/Desktop/apache-tomcat-9.0.20/webapps/ROOT"
+        LOCAL_BUILD = "dist/car_website/browser"
+    }
 
     triggers {
         githubPush()
@@ -16,7 +18,7 @@ pipeline {
 
         stage('Checkout Code') {
             steps {
-                echo 'Cloning latest code from GitHub...'
+                echo 'Cloning GitHub repository...'
                 git branch: 'main', url: 'https://github.com/uzairinayat/car_website.git'
             }
         }
@@ -37,83 +39,81 @@ pipeline {
 
         stage('Test') {
             steps {
-                echo 'Running unit tests...'
+                echo 'Running tests...'
                 bat 'npm run test -- --watch=false --browsers=ChromeHeadless'
             }
         }
 
-        stage('Backup Current Deployment') {
-          steps {
-              echo 'Backing up current Tomcat deployment...'
-      
-              bat """
-              ssh %DEPLOY_SERVER% "rm -rf %BACKUP_PATH% && cp -r %TOMCAT_PATH%/%APP_NAME% %BACKUP_PATH%"
-              """
-          }
+        stage('Create WinSCP Script') {
+            steps {
+                echo 'Creating deploy script...'
+
+                bat """
+                echo open sftp://${SERVER_USER}:${SERVER_PASS}@${SERVER_HOST} > deploy.txt
+                echo rm ${TOMCAT_PATH}/* >> deploy.txt
+                echo put -r ${LOCAL_BUILD}/* ${TOMCAT_PATH}/ >> deploy.txt
+                echo exit >> deploy.txt
+                """
+            }
         }
 
-       stage('Deploy to Tomcat') {
-          steps {
-              echo 'Deploying build to Tomcat webapps ROOT...'
-      
-              bat """
-              ssh %DEPLOY_SERVER% "rm -rf %TOMCAT_PATH%/%APP_NAME%"
-              scp -r dist\\car_website\\browser\\* %DEPLOY_SERVER%:%TOMCAT_PATH%/%APP_NAME%
-              """
-          }
-      }
+        stage('Deploy using WinSCP') {
+            steps {
+                echo 'Deploying to server via WinSCP...'
 
-       stage('Verify Deployment') {
-          steps {
-              echo 'Verifying deployment...'
-      
-              bat """
-              ssh %DEPLOY_SERVER% "test -f %TOMCAT_PATH%/%APP_NAME%/index.html"
-              """
-          }
-      }
+                bat """
+                "C:\\Program Files (x86)\\WinSCP\\WinSCP.com" /script=deploy.txt /log=winscp.log
+                """
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                echo 'Verifying deployment...'
+
+                bat """
+                "C:\\Program Files (x86)\\WinSCP\\WinSCP.com" /command ^
+                "open sftp://${SERVER_USER}:${SERVER_PASS}@${SERVER_HOST}" ^
+                "stat ${TOMCAT_PATH}/index.html" ^
+                "exit"
+                """
+            }
+        }
+    }
 
     post {
 
         success {
             emailext(
                 to: 'uzairinayat42@gmail.com',
-                subject: "✅ SUCCESS: Jenkins Build #${env.BUILD_NUMBER}",
+                subject: "✅ SUCCESS: Build #${env.BUILD_NUMBER}",
                 body: """
-Pipeline Status: SUCCESS
+Pipeline SUCCESS
 
-✔ Build completed successfully
-✔ Deployment done on server
-✔ Tests passed
+✔ Angular build completed
+✔ Deployed via WinSCP
+✔ Server updated successfully
 
-Build Number: ${env.BUILD_NUMBER}
-Job: ${env.JOB_NAME}
+URL:
+http://${SERVER_HOST}:8080/
 """
             )
         }
 
         failure {
-          script {
-              echo "Rollback started..."
-      
-              bat """
-              ssh %DEPLOY_SERVER% "rm -rf %TOMCAT_PATH%/%APP_NAME% && cp -r %BACKUP_PATH% %TOMCAT_PATH%/%APP_NAME%"
-              """
-          }
-      
-          emailext(
-              to: 'uzairinayat42@gmail.com',
-              subject: "❌ FAILED + ROLLBACK: Build #${env.BUILD_NUMBER}",
-              body: """
-      Pipeline FAILED
-      
-      ✔ Rollback executed automatically
-      Path restored:
-      %TOMCAT_PATH%/%APP_NAME%
-      
-      Check logs in Jenkins for error details.
-      """
-          )
-      }
+            emailext(
+                to: 'uzairinayat42@gmail.com',
+                subject: "❌ FAILED: Build #${env.BUILD_NUMBER}",
+                body: """
+Pipeline FAILED
+
+❌ Something went wrong in build or deployment
+
+Check Jenkins console logs for details.
+
+Server: ${SERVER_HOST}
+"""
+            )
+        }
     }
 }
