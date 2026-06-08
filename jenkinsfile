@@ -20,7 +20,7 @@ pipeline {
         stage('Test') {
             steps {
                 echo 'Testing the app'
-                bat 'npm test'                
+                bat 'npm run test'                
                 echo 'Test completed'
             }
         }
