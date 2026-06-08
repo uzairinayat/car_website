@@ -20,11 +20,7 @@ pipeline {
         stage('Test') {
             steps {
                 echo 'Testing the app'
-                bat 'npm test'
-
-                 // Angular unit tests (CI mode)
-                bat 'npm run test -- --watch=false --browsers=ChromeHeadless'
-                
+                bat 'npm test'                
                 echo 'Test completed'
             }
         }
