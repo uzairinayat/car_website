@@ -1,11 +1,12 @@
 pipeline {
     agent any
 
-    environment {
-        DEPLOY_SERVER = "root@10.1.1.221"
-        DEPLOY_PATH = "/root/Desktop/apache-tomcat-9.0.20/webapps/ROOT1"
-        BACKUP_PATH = "/root/Desktop/backup_ROOT1"
-    }
+   environment {
+    DEPLOY_SERVER = "root@10.1.1.221"
+    TOMCAT_PATH = "/root/Desktop/apache-tomcat-9.0.20/webapps"
+    APP_NAME = "ROOT"
+    BACKUP_PATH = "/root/Desktop/backup_ROOT"
+}
 
     triggers {
         githubPush()
@@ -42,34 +43,35 @@ pipeline {
         }
 
         stage('Backup Current Deployment') {
-            steps {
-                echo 'Creating backup of current deployment...'
-                bat """
-                ssh %DEPLOY_SERVER% "rm -rf %BACKUP_PATH% && cp -r %DEPLOY_PATH% %BACKUP_PATH%"
-                """
-            }
+          steps {
+              echo 'Backing up current Tomcat deployment...'
+      
+              bat """
+              ssh %DEPLOY_SERVER% "rm -rf %BACKUP_PATH% && cp -r %TOMCAT_PATH%/%APP_NAME% %BACKUP_PATH%"
+              """
+          }
         }
 
-        stage('Deploy') {
-            steps {
-                echo 'Deploying build to server...'
-                
-                bat """
-                scp -r dist\\car_website\\browser\\* %DEPLOY_SERVER%:%DEPLOY_PATH%
-                """
-            }
-        }
+       stage('Deploy to Tomcat') {
+          steps {
+              echo 'Deploying build to Tomcat webapps ROOT...'
+      
+              bat """
+              ssh %DEPLOY_SERVER% "rm -rf %TOMCAT_PATH%/%APP_NAME%"
+              scp -r dist\\car_website\\browser\\* %DEPLOY_SERVER%:%TOMCAT_PATH%/%APP_NAME%
+              """
+          }
+      }
 
-        stage('Post Deploy Verification') {
-            steps {
-                echo 'Checking deployment health...'
-
-                bat """
-                ssh %DEPLOY_SERVER% "test -f %DEPLOY_PATH%/index.html"
-                """
-            }
-        }
-    }
+       stage('Verify Deployment') {
+          steps {
+              echo 'Verifying deployment...'
+      
+              bat """
+              ssh %DEPLOY_SERVER% "test -f %TOMCAT_PATH%/%APP_NAME%/index.html"
+              """
+          }
+      }
 
     post {
 
@@ -91,29 +93,27 @@ Job: ${env.JOB_NAME}
         }
 
         failure {
-            script {
-                echo "Pipeline failed. Rolling back deployment..."
-
-                bat """
-                ssh %DEPLOY_SERVER% "rm -rf %DEPLOY_PATH% && cp -r %BACKUP_PATH% %DEPLOY_PATH%"
-                """
-            }
-
-            emailext(
-                to: 'uzairinayat42@gmail.com',
-                subject: "❌ FAILED: Jenkins Build #${env.BUILD_NUMBER}",
-                body: """
-Pipeline Status: FAILED
-
-❌ Build or deployment failed
-🔁 Rollback executed automatically
-
-Check Jenkins console output for exact error.
-
-Build Number: ${env.BUILD_NUMBER}
-Job: ${env.JOB_NAME}
-"""
-            )
-        }
+          script {
+              echo "Rollback started..."
+      
+              bat """
+              ssh %DEPLOY_SERVER% "rm -rf %TOMCAT_PATH%/%APP_NAME% && cp -r %BACKUP_PATH% %TOMCAT_PATH%/%APP_NAME%"
+              """
+          }
+      
+          emailext(
+              to: 'uzairinayat42@gmail.com',
+              subject: "❌ FAILED + ROLLBACK: Build #${env.BUILD_NUMBER}",
+              body: """
+      Pipeline FAILED
+      
+      ✔ Rollback executed automatically
+      Path restored:
+      %TOMCAT_PATH%/%APP_NAME%
+      
+      Check logs in Jenkins for error details.
+      """
+          )
+      }
     }
 }
