@@ -7,8 +7,13 @@ pipeline {
             steps {
                 echo 'Building the app'
 
+                // Install dependencies
+                bat 'npm install'
+                
                 // Build Angular project
                 bat 'npm run build'
+
+                echo 'Build completed'
             }
         }
 
