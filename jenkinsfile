@@ -1,6 +1,12 @@
 pipeline {
     agent any
 
+    environment {
+        DEPLOY_SERVER = "root@10.1.1.221"
+        DEPLOY_PATH = "/root/Desktop/apache-tomcat-9.0.20/webapps/ROOT1"
+        BACKUP_PATH = "/root/Desktop/backup_ROOT1"
+    }
+
     triggers {
         githubPush()
     }
@@ -9,42 +15,58 @@ pipeline {
 
         stage('Checkout Code') {
             steps {
-                echo 'Pulling latest code from GitHub'
+                echo 'Cloning latest code from GitHub...'
                 git branch: 'main', url: 'https://github.com/uzairinayat/car_website.git'
             }
         }
 
         stage('Install Dependencies') {
             steps {
-                echo 'Installing dependencies'
+                echo 'Installing npm dependencies...'
                 bat 'npm install'
             }
         }
 
-        stage('Build') {
+        stage('Build Angular App') {
             steps {
-                echo 'Building Angular App'
-                bat 'npm run build'
-                echo 'Build completed'
-            }
-        }
-
-        stage('Deploy') {
-            steps {
-                echo 'Deploying the app'
-        
-                 bat '''
-                 scp -r dist\\car_website\\browser\\* root@10.1.1.221:/root/Desktop/apache-tomcat-9.0.20/webapps/ROOT1
-                 '''
+                echo 'Building Angular project...'
+                bat 'npm run build -- --configuration production'
             }
         }
 
         stage('Test') {
             steps {
-                echo 'Running tests on build'
-
-                // Angular unit tests (headless Chrome)
+                echo 'Running unit tests...'
                 bat 'npm run test -- --watch=false --browsers=ChromeHeadless'
+            }
+        }
+
+        stage('Backup Current Deployment') {
+            steps {
+                echo 'Creating backup of current deployment...'
+                bat """
+                ssh %DEPLOY_SERVER% "rm -rf %BACKUP_PATH% && cp -r %DEPLOY_PATH% %BACKUP_PATH%"
+                """
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                echo 'Deploying build to server...'
+                
+                bat """
+                scp -r dist\\car_website\\browser\\* %DEPLOY_SERVER%:%DEPLOY_PATH%
+                """
+            }
+        }
+
+        stage('Post Deploy Verification') {
+            steps {
+                echo 'Checking deployment health...'
+
+                bat """
+                ssh %DEPLOY_SERVER% "test -f %DEPLOY_PATH%/index.html"
+                """
             }
         }
     }
@@ -54,27 +76,43 @@ pipeline {
         success {
             emailext(
                 to: 'uzairinayat42@gmail.com',
-                subject: "Jenkins SUCCESS: Build #${env.BUILD_NUMBER}",
+                subject: "✅ SUCCESS: Jenkins Build #${env.BUILD_NUMBER}",
                 body: """
-                ✅ Pipeline Success
+Pipeline Status: SUCCESS
 
-                Project built and deployed successfully.
-                Build Number: ${env.BUILD_NUMBER}
-                """
+✔ Build completed successfully
+✔ Deployment done on server
+✔ Tests passed
+
+Build Number: ${env.BUILD_NUMBER}
+Job: ${env.JOB_NAME}
+"""
             )
         }
 
         failure {
+            script {
+                echo "Pipeline failed. Rolling back deployment..."
+
+                bat """
+                ssh %DEPLOY_SERVER% "rm -rf %DEPLOY_PATH% && cp -r %BACKUP_PATH% %DEPLOY_PATH%"
+                """
+            }
+
             emailext(
                 to: 'uzairinayat42@gmail.com',
-                subject: "Jenkins FAILED: Build #${env.BUILD_NUMBER}",
+                subject: "❌ FAILED: Jenkins Build #${env.BUILD_NUMBER}",
                 body: """
-                ❌ Pipeline Failed
+Pipeline Status: FAILED
 
-                Something went wrong in CI/CD pipeline.
-                Check Jenkins logs for details.
-                Build Number: ${env.BUILD_NUMBER}
-                """
+❌ Build or deployment failed
+🔁 Rollback executed automatically
+
+Check Jenkins console output for exact error.
+
+Build Number: ${env.BUILD_NUMBER}
+Job: ${env.JOB_NAME}
+"""
             )
         }
     }
