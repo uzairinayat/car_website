@@ -6,7 +6,7 @@ pipeline {
         SERVER_USER = "root"
 
         // IMPORTANT: @ must be %40
-        SERVER_PASS = "Comp%40123"
+        SERVER_PASS = "Comp@123"
 
         TOMCAT_PATH = "/root/Desktop/apache-tomcat-9.0.20/webapps"
 
