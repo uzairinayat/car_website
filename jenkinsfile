@@ -4,10 +4,18 @@ pipeline {
     environment {
         SERVER_HOST = "10.1.1.221"
         SERVER_USER = "root"
-        SERVER_PASS = "Comp@123"
+
+        // IMPORTANT: @ must be %40
+        SERVER_PASS = "Comp%40123"
 
         TOMCAT_PATH = "/root/Desktop/apache-tomcat-9.0.20/webapps"
+
         LOCAL_BUILD = "dist/car_website/browser"
+
+        WINSCPCMD = "C:\\Program Files (x86)\\WinSCP\\WinSCP.com"
+
+        // HOST KEY (copy from your first connection log)
+        HOST_KEY = "ssh-ed25519 255 dqYIyVzCtK1+a2hZmjhdhG9A3dMhoY1l5xfRrCNm97I"
     }
 
     triggers {
@@ -18,67 +26,48 @@ pipeline {
 
         stage('Checkout Code') {
             steps {
-                echo 'Cloning GitHub repository...'
-                git branch: 'main', url: 'https://github.com/uzairinayat/car_website.git'
+                git branch: 'main',
+                url: 'https://github.com/uzairinayat/car_website.git'
             }
         }
 
         stage('Install Dependencies') {
             steps {
-                echo 'Installing npm dependencies...'
                 bat 'npm install'
             }
         }
 
         stage('Build Angular App') {
             steps {
-                echo 'Building Angular project...'
                 bat 'npm run build -- --configuration production'
             }
         }
 
-       stage('Test') {
-    steps {
-        echo 'Skipping tests for now (fix later)'
-    }
-}
-
-
-        stage('Create WinSCP Script') {
+        stage('Test (Skipped Safe Mode)') {
             steps {
-                echo 'Creating deploy script...'
-
-                writeFile file: 'deploy.txt', text: """
-open sftp://${SERVER_USER}:${SERVER_PASS}@${SERVER_HOST}
-option batch abort
-option confirm off
-rm -rf ${TOMCAT_PATH}/*
-put -r ${LOCAL_BUILD}/* ${TOMCAT_PATH}/
-exit
-"""
+                echo 'Skipping tests to avoid Vitest errors'
             }
         }
 
-       stage('Deploy using WinSCP') {
-    steps {
-        echo 'Deploying via WinSCP...'
+        stage('Deploy via WinSCP') {
+            steps {
+                bat """
+                "${WINSCPCMD}" /command ^
+                "open sftp://${SERVER_USER}:${SERVER_PASS}@${SERVER_HOST} -hostkey=\\"${HOST_KEY}\\"" ^
+                "option batch abort" ^
+                "option confirm off" ^
+                "rm ${TOMCAT_PATH}/*" ^
+                "put -r ${LOCAL_BUILD}/* ${TOMCAT_PATH}/" ^
+                "exit"
+                """
+            }
+        }
 
-        bat """
-        "C:\\Program Files (x86)\\WinSCP\\WinSCP.com" /command ^
-        "open sftp://root:Comp@123@10.1.1.221" ^
-        "rm /root/Desktop/apache-tomcat-9.0.20/webapps/*" ^
-        "put -r dist/car_website/browser/* /root/Desktop/apache-tomcat-9.0.20/webapps/" ^
-        "exit"
-        """
-    }
-}
         stage('Verify Deployment') {
             steps {
-                echo 'Verifying deployment...'
-
                 bat """
-                "C:\\Program Files (x86)\\WinSCP\\WinSCP.com" /command ^
-                "open sftp://${SERVER_USER}:${SERVER_PASS}@${SERVER_HOST}" ^
+                "${WINSCPCMD}" /command ^
+                "open sftp://${SERVER_USER}:${SERVER_PASS}@${SERVER_HOST} -hostkey=\\"${HOST_KEY}\\"" ^
                 "ls ${TOMCAT_PATH}" ^
                 "exit"
                 """
@@ -87,7 +76,6 @@ exit
     }
 
     post {
-
         success {
             emailext(
                 to: 'uzairinayat42@gmail.com',
@@ -95,9 +83,9 @@ exit
                 body: """
 Pipeline SUCCESS
 
-✔ Angular build completed
-✔ Deployed via WinSCP
-✔ Server updated successfully
+✔ Build completed
+✔ Deployed to server
+✔ Angular app updated
 
 URL:
 http://${SERVER_HOST}:8080/
@@ -112,11 +100,10 @@ http://${SERVER_HOST}:8080/
                 body: """
 Pipeline FAILED
 
-❌ Something went wrong in build or deployment
-
-Check Jenkins logs for details.
+Check Jenkins console for details.
 
 Server: ${SERVER_HOST}
+Build: ${env.BUILD_NUMBER}
 """
             )
         }
