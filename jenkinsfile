@@ -42,6 +42,16 @@ pipeline {
         echo 'Skipping tests for now (fix later)'
     }
 }
+stage('Test WinSCP Connection') {
+    steps {
+        bat """
+        "C:\\Program Files (x86)\\WinSCP\\WinSCP.com" /command ^
+        "open sftp://root:Comp%40123@10.1.1.221 -hostkey=\"ssh-ed25519 255 dqYIyVzCtK1+a2hZmjhdhG9A3dMhoY1l5xfRrCNm97I\"" ^
+        "ls /root/Desktop/apache-tomcat-9.0.20/webapps" ^
+        "exit"
+        """
+    }
+}
 
         stage('Create WinSCP Script') {
             steps {
