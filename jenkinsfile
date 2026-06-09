@@ -6,7 +6,7 @@ pipeline {
         SERVER_USER = "root"
         SERVER_PASS = "Comp%40123"
 
-        TOMCAT_PATH = "/root/Desktop/apache-tomcat-9.0.20/webapps/ROOT"
+        TOMCAT_PATH = "/root/Desktop/apache-tomcat-9.0.20/webapps"
         LOCAL_BUILD = "dist/car_website/browser"
     }
 
@@ -58,14 +58,15 @@ exit
             }
         }
 
-        stage('Deploy using WinSCP') {
-            steps {
-                echo 'Deploying to server via WinSCP...'
+       stage('Deploy using WinSCP') {
+    steps {
+        echo 'Deploying using WinSCP script...'
 
-                bat "\"C:\\Program Files (x86)\\WinSCP\\WinSCP.com\" /script=deploy.txt /log=winscp.log"
-            }
-        }
-
+        bat """
+        "C:\\Program Files (x86)\\WinSCP\\WinSCP.com" /script="C:\\ProgramData\\Jenkins\\.jenkins\\deploy.txt" /log=winscp.log
+        """
+    }
+}
         stage('Verify Deployment') {
             steps {
                 echo 'Verifying deployment...'
