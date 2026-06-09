@@ -1,111 +1,229 @@
 pipeline {
     agent any
-
+    
     environment {
+        // Server Configuration
         SERVER_HOST = "10.1.1.221"
+        SERVER_PORT = "22"
         SERVER_USER = "root"
-
-        // IMPORTANT: @ must be %40
-        SERVER_PASS = "Comp@123"
-
+        SERVER_PASS = "Comp%40123"  // @ character encoded as %40
+        
+        // Deployment Paths
         TOMCAT_PATH = "/root/Desktop/apache-tomcat-9.0.20/webapps"
-
+        APP_NAME = "ROOT"  // Deploy to ROOT for root path access
+        
+        // Build Paths
         LOCAL_BUILD = "dist/car_website/browser"
-
+        
+        // WinSCP Configuration
         WINSCPCMD = "C:\\Program Files (x86)\\WinSCP\\WinSCP.com"
-
-        // HOST KEY (copy from your first connection log)
         HOST_KEY = "ssh-ed25519 255 dqYIyVzCtK1+a2hZmjhdhG9A3dMhoY1l5xfRrCNm97I"
+        
+        // Build Info
+        BUILD_TIMESTAMP = sh(script: "date '+%Y-%m-%d_%H-%M-%S'", returnStdout: true).trim()
     }
-
+    
     triggers {
         githubPush()
     }
-
+    
+    options {
+        timestamps()
+        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+    
     stages {
-
-        stage('Checkout Code') {
+        stage('📥 Checkout Code') {
             steps {
-                git branch: 'main',
-                url: 'https://github.com/uzairinayat/car_website.git'
+                script {
+                    echo "=== Checking out code from GitHub ==="
+                }
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: '*/main']],
+                    userRemoteConfigs: [[
+                        url: 'https://github.com/uzairinayat/car_website.git'
+                    ]]
+                ])
+                script {
+                    echo "✅ Code checked out successfully"
+                }
             }
         }
-
-        stage('Install Dependencies') {
+        
+        stage('📦 Install Dependencies') {
             steps {
-                bat 'npm install'
+                script {
+                    echo "=== Installing npm dependencies ==="
+                }
+                bat 'npm install --legacy-peer-deps'
+                script {
+                    echo "✅ Dependencies installed successfully"
+                }
             }
         }
-
-        stage('Build Angular App') {
+        
+        stage('🔨 Build Angular App') {
             steps {
+                script {
+                    echo "=== Building Angular application for production ==="
+                }
                 bat 'npm run build -- --configuration production'
+                script {
+                    echo "✅ Build completed successfully"
+                }
             }
         }
-
-        stage('Test (Skipped Safe Mode)') {
+        
+        stage('✅ Verify Build Artifacts') {
             steps {
-                echo 'Skipping tests to avoid Vitest errors'
+                script {
+                    echo "=== Verifying build artifacts ==="
+                    def buildDir = new File(env.LOCAL_BUILD)
+                    if (buildDir.exists()) {
+                        echo "✅ Build directory exists: ${env.LOCAL_BUILD}"
+                    } else {
+                        error "❌ Build directory not found: ${env.LOCAL_BUILD}"
+                    }
+                }
             }
         }
-
-        stage('Deploy via WinSCP') {
+        
+        stage('🚀 Deploy to WinSCP Server') {
             steps {
+                script {
+                    echo "=== Starting deployment to ${env.SERVER_HOST} ==="
+                    echo "Deployment path: ${env.TOMCAT_PATH}"
+                }
+                
                 bat """
+                @echo off
+                setlocal enabledelayedexpansion
+                
+                echo [%date% %time%] Starting WinSCP deployment...
+                
                 "${WINSCPCMD}" /command ^
-                "open sftp://${SERVER_USER}:${SERVER_PASS}@${SERVER_HOST} -hostkey=\\"${HOST_KEY}\\"" ^
                 "option batch abort" ^
                 "option confirm off" ^
-                "rm ${TOMCAT_PATH}/*" ^
-                "put -r ${LOCAL_BUILD}/* ${TOMCAT_PATH}/" ^
+                "open sftp://${SERVER_USER}:${SERVER_PASS}@${SERVER_HOST}:${SERVER_PORT} -hostkey=\"${HOST_KEY}\"" ^
+                "cd ${TOMCAT_PATH}" ^
+                "rm -r ${APP_NAME}" ^
+                "mkdir ${APP_NAME}" ^
+                "lcd ${LOCAL_BUILD}" ^
+                "cd ${TOMCAT_PATH}/${APP_NAME}" ^
+                "put *" ^
                 "exit"
+                
+                if !errorlevel! neq 0 (
+                    echo [%date% %time%] WinSCP deployment FAILED
+                    exit /b 1
+                ) else (
+                    echo [%date% %time%] WinSCP deployment completed
+                )
+                
+                endlocal
                 """
+                
+                script {
+                    echo "✅ Deployment completed successfully"
+                }
             }
         }
-
-        stage('Verify Deployment') {
+        
+        stage('🔍 Verify Deployment') {
             steps {
+                script {
+                    echo "=== Verifying files on server ==="
+                }
+                
                 bat """
+                @echo off
                 "${WINSCPCMD}" /command ^
-                "open sftp://${SERVER_USER}:${SERVER_PASS}@${SERVER_HOST} -hostkey=\\"${HOST_KEY}\\"" ^
-                "ls ${TOMCAT_PATH}" ^
+                "option batch abort" ^
+                "option confirm off" ^
+                "open sftp://${SERVER_USER}:${SERVER_PASS}@${SERVER_HOST}:${SERVER_PORT} -hostkey=\"${HOST_KEY}\"" ^
+                "ls -la ${TOMCAT_PATH}/${APP_NAME}/" ^
                 "exit"
                 """
+                
+                script {
+                    echo "✅ Verification completed"
+                }
             }
         }
     }
-
+    
     post {
         success {
+            script {
+                echo "=== BUILD SUCCESSFUL ==="
+            }
             emailext(
+                subject: "✅ SUCCESS: Build #${env.BUILD_NUMBER} - Car Website Deployed",
                 to: 'uzairinayat42@gmail.com',
-                subject: "✅ SUCCESS: Build #${env.BUILD_NUMBER}",
+                mimeType: 'text/html',
                 body: """
-Pipeline SUCCESS
-
-✔ Build completed
-✔ Deployed to server
-✔ Angular app updated
-
-URL:
-http://${SERVER_HOST}:8080/
-"""
+                    <h2 style="color: #28a745;">✅ DEPLOYMENT SUCCESSFUL</h2>
+                    <p><strong>Build #:</strong> ${env.BUILD_NUMBER}</p>
+                    <p><strong>Status:</strong> ✓ Success</p>
+                    <p><strong>Build Time:</strong> ${env.BUILD_TIMESTAMP}</p>
+                    <hr>
+                    <h3>Deployment Details:</h3>
+                    <ul>
+                        <li><strong>Server:</strong> ${env.SERVER_HOST}:8080</li>
+                        <li><strong>Deployment Path:</strong> ${env.TOMCAT_PATH}/${env.APP_NAME}</li>
+                        <li><strong>Build Directory:</strong> ${env.LOCAL_BUILD}</li>
+                    </ul>
+                    <hr>
+                    <h3>Access Your Application:</h3>
+                    <p><a href="http://${env.SERVER_HOST}:8080/" target="_blank">http://${env.SERVER_HOST}:8080/</a></p>
+                    <hr>
+                    <p><strong>Build Log:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
+                """
             )
         }
-
+        
         failure {
+            script {
+                echo "=== BUILD FAILED ==="
+            }
             emailext(
+                subject: "❌ FAILED: Build #${env.BUILD_NUMBER} - Car Website Deployment",
                 to: 'uzairinayat42@gmail.com',
-                subject: "❌ FAILED: Build #${env.BUILD_NUMBER}",
+                mimeType: 'text/html',
                 body: """
-Pipeline FAILED
-
-Check Jenkins console for details.
-
-Server: ${SERVER_HOST}
-Build: ${env.BUILD_NUMBER}
-"""
+                    <h2 style="color: #dc3545;">❌ DEPLOYMENT FAILED</h2>
+                    <p><strong>Build #:</strong> ${env.BUILD_NUMBER}</p>
+                    <p><strong>Status:</strong> ✗ Failed</p>
+                    <p><strong>Build Time:</strong> ${env.BUILD_TIMESTAMP}</p>
+                    <hr>
+                    <h3>Server Information:</h3>
+                    <ul>
+                        <li><strong>Server:</strong> ${env.SERVER_HOST}</li>
+                        <li><strong>User:</strong> ${env.SERVER_USER}</li>
+                        <li><strong>Deployment Path:</strong> ${env.TOMCAT_PATH}</li>
+                    </ul>
+                    <hr>
+                    <h3>Troubleshooting:</h3>
+                    <ul>
+                        <li>Check build logs for errors</li>
+                        <li>Verify WinSCP server connectivity</li>
+                        <li>Check server credentials</li>
+                        <li>Verify build artifacts exist</li>
+                    </ul>
+                    <hr>
+                    <p><strong>Build Log:</strong> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
+                """
             )
+        }
+        
+        always {
+            script {
+                echo "=== Pipeline Execution Completed ==="
+                echo "Build Number: ${env.BUILD_NUMBER}"
+                echo "Build Status: ${currentBuild.result}"
+            }
         }
     }
 }
