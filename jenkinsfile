@@ -1,93 +1,99 @@
 pipeline {
-    agent any
+agent any
 
-    environment {
-        SERVER_HOST = "10.1.1.221"
-        SERVER_USER = "root"
-        SERVER_PASS = "Comp%40123"  // encoded Comp@123
+```
+environment {
+    SERVER_HOST = "10.1.1.221"
+    SERVER_USER = "root"
+    SERVER_PASS = "Comp@123"
 
-        TOMCAT_PATH = "/root/Desktop/apache-tomcat-9.0.20/webapps/ROOT"
-        LOCAL_BUILD = "dist/car_website/browser"
-    }
+    TOMCAT_PATH = "/root/Desktop/apache-tomcat-9.0.20/webapps/ROOT"
+    LOCAL_BUILD = "dist/car_website/browser"
+}
 
-    triggers {
-        githubPush()
-    }
+triggers {
+    githubPush()
+}
 
-    stages {
+stages {
 
-        stage('Checkout Code') {
-            steps {
-                echo 'Cloning GitHub repository...'
-                git branch: 'main', url: 'https://github.com/uzairinayat/car_website.git'
-            }
-        }
-
-        stage('Install Dependencies') {
-            steps {
-                echo 'Installing npm dependencies...'
-                bat 'npm install'
-            }
-        }
-
-        stage('Build Angular App') {
-            steps {
-                echo 'Building Angular project...'
-                bat 'npm run build -- --configuration production'
-            }
-        }
-
-        stage('Test') {
-            steps {
-                echo 'Running tests...'
-                bat 'npm run test -- --watch=false --browsers=ChromeHeadless'
-            }
-        }
-
-        stage('Create WinSCP Script') {
-            steps {
-                echo 'Creating deploy script...'
-
-                bat """
-                echo open sftp://${SERVER_USER}:${SERVER_PASS}@${SERVER_HOST} > deploy.txt
-                echo rm ${TOMCAT_PATH}/* >> deploy.txt
-                echo put -r ${LOCAL_BUILD}/* ${TOMCAT_PATH}/ >> deploy.txt
-                echo exit >> deploy.txt
-                """
-            }
-        }
-
-        stage('Deploy using WinSCP') {
-            steps {
-                echo 'Deploying to server via WinSCP...'
-
-                bat """
-                "C:\\Program Files (x86)\\WinSCP\\WinSCP.com" /script=deploy.txt /log=winscp.log
-                """
-            }
-        }
-
-        stage('Verify Deployment') {
-            steps {
-                echo 'Verifying deployment...'
-
-                bat """
-                "C:\\Program Files (x86)\\WinSCP\\WinSCP.com" /command ^
-                "open sftp://${SERVER_USER}:${SERVER_PASS}@${SERVER_HOST}" ^
-                "stat ${TOMCAT_PATH}/index.html" ^
-                "exit"
-                """
-            }
+    stage('Checkout Code') {
+        steps {
+            echo 'Cloning GitHub repository...'
+            git branch: 'main', url: 'https://github.com/uzairinayat/car_website.git'
         }
     }
 
-    post {
+    stage('Install Dependencies') {
+        steps {
+            echo 'Installing npm dependencies...'
+            bat 'npm install'
+        }
+    }
 
-        success {
-            emailext(
-                to: 'uzairinayat42@gmail.com',
-                subject: "✅ SUCCESS: Build #${env.BUILD_NUMBER}",
-                body: """
+    stage('Build Angular App') {
+        steps {
+            echo 'Building Angular project...'
+            bat 'npm run build -- --configuration production'
+        }
+    }
+
+    stage('Test') {
+        steps {
+            echo 'Running tests...'
+            bat 'npm run test'   // ✅ FIXED (Vitest)
+        }
+    }
+
+    stage('Create WinSCP Script') {
+        steps {
+            echo 'Creating deploy script...'
+
+            writeFile file: 'deploy.txt', text: """
+```
+
+open sftp://${SERVER_USER}:${SERVER_PASS}@${SERVER_HOST}
+option batch abort
+option confirm off
+rm -rf ${TOMCAT_PATH}/*
+put -r ${LOCAL_BUILD}/* ${TOMCAT_PATH}/
+exit
+"""
+}
+}
+
+```
+    stage('Deploy using WinSCP') {
+        steps {
+            echo 'Deploying to server via WinSCP...'
+
+            bat '"C:\\Program Files (x86)\\WinSCP\\WinSCP.com" /script=deploy.txt /log=winscp.log'
+        }
+    }
+
+    stage('Verify Deployment') {
+        steps {
+            echo 'Verifying deployment...'
+
+            bat """
+            "C:\\Program Files (x86)\\WinSCP\\WinSCP.com" /command ^
+            "open sftp://${SERVER_USER}:${SERVER_PASS}@${SERVER_HOST}" ^
+            "ls ${TOMCAT_PATH}" ^
+            "exit"
+            """
+        }
+    }
+}
+
+post {
+
+    success {
+        emailext(
+            to: 'uzairinayat42@gmail.com',
+            subject: "✅ SUCCESS: Build #${env.BUILD_NUMBER}",
+            body: """
+```
+
 Pipeline SUCCESS
 
 ✔ Angular build completed
@@ -97,23 +103,26 @@ Pipeline SUCCESS
 URL:
 http://${SERVER_HOST}:8080/
 """
-            )
-        }
+)
+}
 
-        failure {
-            emailext(
-                to: 'uzairinayat42@gmail.com',
-                subject: "❌ FAILED: Build #${env.BUILD_NUMBER}",
-                body: """
+```
+    failure {
+        emailext(
+            to: 'uzairinayat42@gmail.com',
+            subject: "❌ FAILED: Build #${env.BUILD_NUMBER}",
+            body: """
+```
+
 Pipeline FAILED
 
 ❌ Something went wrong in build or deployment
 
-Check Jenkins console logs for details.
+Check Jenkins console logs.
 
 Server: ${SERVER_HOST}
 """
-            )
-        }
-    }
+)
+}
+}
 }
