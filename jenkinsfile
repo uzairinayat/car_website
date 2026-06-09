@@ -4,7 +4,7 @@ pipeline {
     environment {
         SERVER_HOST = "10.1.1.221"
         SERVER_USER = "root"
-        SERVER_PASS = "Comp%40123"
+        SERVER_PASS = "Comp@123"
 
         TOMCAT_PATH = "/root/Desktop/apache-tomcat-9.0.20/webapps"
         LOCAL_BUILD = "dist/car_website/browser"
@@ -70,10 +70,14 @@ exit
 
        stage('Deploy using WinSCP') {
     steps {
-        echo 'Deploying using WinSCP script...'
+        echo 'Deploying via WinSCP...'
 
         bat """
-        "C:\\Program Files (x86)\\WinSCP\\WinSCP.com" /script="C:\\ProgramData\\Jenkins\\.jenkins\\deploy.txt" /log=winscp.log
+        "C:\\Program Files (x86)\\WinSCP\\WinSCP.com" /command ^
+        "open sftp://root:Comp@123@10.1.1.221 -hostkey=\\"ssh-ed25519 255 dqYIyVzCtK1+a2hZmjhdhG9A3dMhoY1l5xfRrCNm97I\\"" ^
+        "rm /root/Desktop/apache-tomcat-9.0.20/webapps/*" ^
+        "put -r dist/car_website/browser/* /root/Desktop/apache-tomcat-9.0.20/webapps/" ^
+        "exit"
         """
     }
 }
