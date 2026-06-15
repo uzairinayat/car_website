@@ -2,15 +2,12 @@ pipeline {
     agent any
 
     environment {
-        TOMCAT_PATH = 'C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0\\webapps\\CAR'
-        LOCAL_BUILD = 'dist\\car_website\\browser'
-    }
-
-    triggers {
-        githubPush()
+        DEPLOY_PATH = "\\\\10.1.1.251\\TomcatWebapps\\CAR"
+        APP_NAME = "CAR"
     }
 
     stages {
+
         stage('Checkout Code') {
             steps {
                 git branch: 'main', url: 'https://github.com/uzairinayat/car_website.git'
@@ -25,57 +22,69 @@ pipeline {
 
         stage('Build Angular App') {
             steps {
-                bat 'npm run build -- --configuration production'
+                bat 'npm run build -- --configuration production --base-href /CAR/'
             }
         }
 
-        stage('Test (Skipped Safe Mode)') {
-            steps {
-                echo 'Skipping tests to avoid Vitest errors'
-            }
-        }
-
-        stage('Deploy to Tomcat') {
-            agent { label 'tomcat-server' }
+        stage('Clean Old Deployment') {
             steps {
                 bat """
-                    if not exist "${TOMCAT_PATH}" mkdir "${TOMCAT_PATH}"
-                    xcopy /Y /E /I "%WORKSPACE%\\${LOCAL_BUILD}\\*" "${TOMCAT_PATH}\\"
+                if exist "%DEPLOY_PATH%" rmdir /S /Q "%DEPLOY_PATH%"
+                mkdir "%DEPLOY_PATH%"
                 """
             }
         }
 
-        stage('Verify Deployment') {
+        stage('Deploy to Tomcat Server') {
             steps {
-                script {
-                    def status = bat(
-                        script: "curl -s -o NUL -w \"%%{http_code}\" http://10.1.1.251:8080/CAR/",
-                        returnStdout: true
-                    ).trim()
-
-                    if (!status.endsWith('200')) {
-                        error "Deployment verification failed! HTTP status: ${status}"
-                    } else {
-                        echo "Deployment verified successfully! HTTP status: ${status}"
-                    }
-                }
+                bat """
+                xcopy /E /I /Y dist\\car_website\\* "%DEPLOY_PATH%\\"
+                """
             }
         }
     }
 
     post {
+
         success {
+            echo 'Deployment Successful'
+
             emailext(
-                to: 'uzairinayat42@gmail.com',
-                subject: "✅ SUCCESS: Build #${env.BUILD_NUMBER}",
-                body: "Pipeline SUCCESS\nDeployed to http://10.1.1.251:8080/CAR/\nBuild: ${env.BUILD_NUMBER}"
+                to: 'youremail@gmail.com',
+                subject: "SUCCESS: ${APP_NAME} Deployed Successfully",
+                body: """
+Hello,
+
+Your application ${APP_NAME} has been deployed successfully.
+
+Server: 10.1.1.251
+Path: ${DEPLOY_PATH}
+URL: http://10.1.1.251:8080/CAR/
+
+Regards,
+Jenkins
+"""
             )
         }
+
         failure {
+            echo 'Deployment Failed'
+
             emailext(
-                to: 'uzairinayat42@gmail.com',
-                subject: "❌ FAILED: Build #${env.BUILD_NUMBER}",
-                body: "Pipeline FAILED\nCheck console: ${env.BUILD_URL}\nBuild: ${env.BUILD_NUMBER}"
+                to: 'youremail@gmail.com',
+                subject: "FAILED: ${APP_NAME} Deployment",
+                body: """
+Hello,
+
+Deployment FAILED for ${APP_NAME}.
+
+Please check Jenkins logs for details.
+
+Server: 10.1.1.251
+
+Regards,
+Jenkins
+"""
             )
         }
     }
