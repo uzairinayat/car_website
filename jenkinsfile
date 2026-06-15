@@ -4,38 +4,49 @@ agent any
 ```
 environment {
     EC2_IP = "34.196.168.199"
-    EC2_USER = "ec2-user"   // use ubuntu if your instance is Ubuntu
-    KEY_PATH = "/var/lib/jenkins/ec2-key.pem"  // path inside Jenkins server
+    EC2_USER = "ec2-user"   // change to ubuntu if needed
 }
 
 stages {
 
+    stage('Checkout') {
+        steps {
+            echo 'Cloning repository...'
+            git branch: 'main', url: 'https://github.com/uzairinayat/car_website.git'
+        }
+    }
+
+    stage('Install Dependencies') {
+        steps {
+            sh 'npm install'
+        }
+    }
+
     stage('Build') {
         steps {
-            echo 'Building the app'
-
-            sh 'npm install'
             sh 'npm run build'
-
-            echo 'Build completed'
         }
     }
 
     stage('Deploy to EC2') {
         steps {
-            echo 'Deploying to EC2...'
+            sshagent(['ec2-ssh']) {
+                sh """
+                echo "Cleaning old files..."
+                ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_IP '
+                    sudo rm -rf /var/www/html/*
+                '
 
-            // Copy build files to EC2
-            sh '''
-            scp -i $KEY_PATH -o StrictHostKeyChecking=no -r dist/* $EC2_USER@$EC2_IP:/var/www/html/
-            '''
+                echo "Copying new build..."
+                scp -o StrictHostKeyChecking=no -r dist/car_website/browser/* $EC2_USER@$EC2_IP:/tmp/
 
-            // Restart nginx on EC2
-            sh '''
-            ssh -i $KEY_PATH -o StrictHostKeyChecking=no $EC2_USER@$EC2_IP "
-            sudo systemctl restart nginx
-            "
-            '''
+                echo "Moving to nginx folder..."
+                ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_IP '
+                    sudo cp -r /tmp/* /var/www/html/
+                    sudo systemctl restart nginx
+                '
+                """
+            }
         }
     }
 }
@@ -44,15 +55,16 @@ post {
     success {
         emailext(
             to: 'uzairinayat42@gmail.com',
-            subject: 'Jenkins Success ✅',
-            body: 'Build & Deployment completed successfully 🚀'
+            subject: 'Deployment Success 🚀',
+            body: 'car_website deployed successfully on EC2.'
         )
     }
+
     failure {
         emailext(
             to: 'uzairinayat42@gmail.com',
-            subject: 'Jenkins Failed ❌',
-            body: 'Build or Deployment failed. Check Jenkins logs.'
+            subject: 'Deployment Failed ❌',
+            body: 'Check Jenkins logs for errors.'
         )
     }
 }
