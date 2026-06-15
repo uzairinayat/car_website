@@ -2,7 +2,6 @@ pipeline {
     agent any
     environment {
         EC2_IP = "34.196.168.199"
-        EC2_USER = "ec2-user"
         DEPLOY_PATH = "/usr/share/nginx/html"
         BUILD_OUTPUT = "dist/car_website/browser"
     }
@@ -25,11 +24,11 @@ pipeline {
         stage('Deploy') {
             steps {
                 echo 'Deploying to EC2...'
-                sshagent(['ec2-ssh']) {
+                withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')]) {
                     bat """
-                    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL %EC2_USER%@%EC2_IP% "mkdir -p /tmp/deploy_%BUILD_NUMBER%"
-                    scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -r %BUILD_OUTPUT% %EC2_USER%@%EC2_IP%:/tmp/deploy_%BUILD_NUMBER%/
-                    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL %EC2_USER%@%EC2_IP% "sudo rm -rf %DEPLOY_PATH%/* && sudo cp -r /tmp/deploy_%BUILD_NUMBER%/browser/* %DEPLOY_PATH%/ && sudo rm -rf /tmp/deploy_%BUILD_NUMBER% && sudo systemctl reload nginx"
+                    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -i "%SSH_KEY%" %SSH_USER%@%EC2_IP% "mkdir -p /tmp/deploy_%BUILD_NUMBER%"
+                    scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -i "%SSH_KEY%" -r %BUILD_OUTPUT% %SSH_USER%@%EC2_IP%:/tmp/deploy_%BUILD_NUMBER%/
+                    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -i "%SSH_KEY%" %SSH_USER%@%EC2_IP% "sudo rm -rf %DEPLOY_PATH%/* && sudo cp -r /tmp/deploy_%BUILD_NUMBER%/browser/* %DEPLOY_PATH%/ && sudo rm -rf /tmp/deploy_%BUILD_NUMBER% && sudo systemctl reload nginx"
                     """
                 }
             }
