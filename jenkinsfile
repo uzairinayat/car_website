@@ -1,43 +1,61 @@
 pipeline {
-    agent any
+agent any
 
-    stages {
+```
+environment {
+    EC2_IP = "34.196.168.199"
+    EC2_USER = "ec2-user"   // use ubuntu if your instance is Ubuntu
+    KEY_PATH = "/var/lib/jenkins/ec2-key.pem"  // path inside Jenkins server
+}
 
-        stage('Build') {
-            steps {
-                echo 'Building the app'
+stages {
 
-                // Install dependencies
-                bat 'npm install'
-                
-                // Build Angular project
-                bat 'npm run build'
+    stage('Build') {
+        steps {
+            echo 'Building the app'
 
-                echo 'Build completed'
-            }
-        }
+            sh 'npm install'
+            sh 'npm run build'
 
-        stage('Test') {
-            steps {
-                echo 'Running Test'
-
-            }
-        }
-
-        stage('Deploy') {
-            steps {
-                echo 'Deploying the app'
-            }
+            echo 'Build completed'
         }
     }
 
- post {
+    stage('Deploy to EC2') {
+        steps {
+            echo 'Deploying to EC2...'
+
+            // Copy build files to EC2
+            sh '''
+            scp -i $KEY_PATH -o StrictHostKeyChecking=no -r dist/* $EC2_USER@$EC2_IP:/var/www/html/
+            '''
+
+            // Restart nginx on EC2
+            sh '''
+            ssh -i $KEY_PATH -o StrictHostKeyChecking=no $EC2_USER@$EC2_IP "
+            sudo systemctl restart nginx
+            "
+            '''
+        }
+    }
+}
+
+post {
     success {
         emailext(
             to: 'uzairinayat42@gmail.com',
-            subject: 'Jenkins Success',
-            body: 'Pipeline completed successfully',
+            subject: 'Jenkins Success ✅',
+            body: 'Build & Deployment completed successfully 🚀'
+        )
+    }
+    failure {
+        emailext(
+            to: 'uzairinayat42@gmail.com',
+            subject: 'Jenkins Failed ❌',
+            body: 'Build or Deployment failed. Check Jenkins logs.'
         )
     }
 }
+```
+
 }
