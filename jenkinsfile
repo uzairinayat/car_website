@@ -2,10 +2,8 @@ pipeline {
     agent any
 
     environment {
-        SERVER_HOST  = '10.1.1.251'
-        SERVER_USER  = 'testing'
-        TOMCAT_PATH  = 'C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0\\webapps\\CAR'
-        LOCAL_BUILD  = 'dist\\car_website\\browser'
+        TOMCAT_PATH = 'C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0\\webapps\\CAR'
+        LOCAL_BUILD = 'dist\\car_website\\browser'
     }
 
     triggers {
@@ -37,22 +35,12 @@ pipeline {
             }
         }
 
-        stage('Deploy via WinRM') {
+        stage('Deploy to Tomcat') {
+            agent { label 'tomcat-server' }
             steps {
-                powershell """
-                    \$securePass = New-Object System.Security.SecureString
-                    \$cred = New-Object System.Management.Automation.PSCredential('${SERVER_USER}', \$securePass)
-                    \$session = New-PSSession -ComputerName '${SERVER_HOST}' -Credential \$cred -Authentication Negotiate
-
-                    # Ensure target folder exists (no deletion of existing files)
-                    Invoke-Command -Session \$session -ScriptBlock {
-                        New-Item -ItemType Directory -Path '${TOMCAT_PATH}' -Force | Out-Null
-                    }
-
-                    # Copy new build to remote Tomcat webapps/CAR, overwriting only matching files
-                    Copy-Item -Path '.\\${LOCAL_BUILD}\\*' -Destination '${TOMCAT_PATH}' -ToSession \$session -Recurse -Force
-
-                    Remove-PSSession \$session
+                bat """
+                    if not exist "${TOMCAT_PATH}" mkdir "${TOMCAT_PATH}"
+                    xcopy /Y /E /I "%WORKSPACE%\\${LOCAL_BUILD}\\*" "${TOMCAT_PATH}\\"
                 """
             }
         }
@@ -61,7 +49,7 @@ pipeline {
             steps {
                 script {
                     def status = bat(
-                        script: "curl -s -o NUL -w \"%%{http_code}\" http://%SERVER_HOST%:8080/CAR/",
+                        script: "curl -s -o NUL -w \"%%{http_code}\" http://10.1.1.251:8080/CAR/",
                         returnStdout: true
                     ).trim()
 
@@ -80,28 +68,14 @@ pipeline {
             emailext(
                 to: 'uzairinayat42@gmail.com',
                 subject: "✅ SUCCESS: Build #${env.BUILD_NUMBER}",
-                body: """
-Pipeline SUCCESS
-✔ Build completed
-✔ Deployed to server
-✔ Angular app updated
-
-URL: http://${SERVER_HOST}:8080/CAR/
-Build: ${env.BUILD_NUMBER}
-"""
+                body: "Pipeline SUCCESS\nDeployed to http://10.1.1.251:8080/CAR/\nBuild: ${env.BUILD_NUMBER}"
             )
         }
         failure {
             emailext(
                 to: 'uzairinayat42@gmail.com',
                 subject: "❌ FAILED: Build #${env.BUILD_NUMBER}",
-                body: """
-Pipeline FAILED
-Check Jenkins console for details: ${env.BUILD_URL}
-
-Server: ${SERVER_HOST}
-Build: ${env.BUILD_NUMBER}
-"""
+                body: "Pipeline FAILED\nCheck console: ${env.BUILD_URL}\nBuild: ${env.BUILD_NUMBER}"
             )
         }
     }
