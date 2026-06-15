@@ -1,73 +1,59 @@
 pipeline {
-agent any
+    agent any
 
-```
-environment {
-    EC2_IP = "34.196.168.199"
-    EC2_USER = "ec2-user"   // change to ubuntu if needed
-}
-
-stages {
-
-    stage('Checkout') {
-        steps {
-            echo 'Cloning repository...'
-            git branch: 'main', url: 'https://github.com/uzairinayat/car_website.git'
-        }
+    environment {
+        EC2_IP = "34.196.168.199"
+        EC2_USER = "ec2-user"
     }
 
-    stage('Install Dependencies') {
-        steps {
-            sh 'npm install'
+    stages {
+
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/uzairinayat/car_website.git'
+            }
         }
-    }
 
-    stage('Build') {
-        steps {
-            sh 'npm run build'
+        stage('Install Dependencies') {
+            steps {
+                bat 'npm install'
+            }
         }
-    }
 
-    stage('Deploy to EC2') {
-        steps {
-            sshagent(['ec2-ssh']) {
-                sh """
-                echo "Cleaning old files..."
-                ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_IP '
-                    sudo rm -rf /var/www/html/*
-                '
+        stage('Build') {
+            steps {
+                bat 'npm run build'
+            }
+        }
 
-                echo "Copying new build..."
-                scp -o StrictHostKeyChecking=no -r dist/car_website/browser/* $EC2_USER@$EC2_IP:/tmp/
+        stage('Deploy') {
+            steps {
+                echo 'Deploying to EC2...'
 
-                echo "Moving to nginx folder..."
-                ssh -o StrictHostKeyChecking=no $EC2_USER@$EC2_IP '
-                    sudo cp -r /tmp/* /var/www/html/
-                    sudo systemctl restart nginx
-                '
-                """
+                bat '''
+                scp -i ec2-key.pem -r dist/car_website/browser/* %EC2_USER%@%EC2_IP%:/tmp/
+
+                ssh -i ec2-key.pem %EC2_USER%@%EC2_IP "sudo rm -rf /var/www/html/* && sudo cp -r /tmp/* /var/www/html/ && sudo systemctl restart nginx"
+                '''
             }
         }
     }
-}
 
-post {
-    success {
-        emailext(
-            to: 'uzairinayat42@gmail.com',
-            subject: 'Deployment Success 🚀',
-            body: 'car_website deployed successfully on EC2.'
-        )
+    post {
+        success {
+            emailext(
+                to: 'uzairinayat42@gmail.com',
+                subject: 'Deployment Success 🚀',
+                body: 'car_website deployed successfully on EC2'
+            )
+        }
+
+        failure {
+            emailext(
+                to: 'uzairinayat42@gmail.com',
+                subject: 'Deployment Failed ❌',
+                body: 'Check Jenkins logs'
+            )
+        }
     }
-
-    failure {
-        emailext(
-            to: 'uzairinayat42@gmail.com',
-            subject: 'Deployment Failed ❌',
-            body: 'Check Jenkins logs for errors.'
-        )
-    }
-}
-```
-
 }
