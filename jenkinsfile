@@ -1,91 +1,43 @@
 pipeline {
     agent any
 
-    environment {
-        DEPLOY_PATH = "\\\\10.1.1.251\\TomcatWebapps\\CAR"
-        APP_NAME = "CAR"
-    }
-
     stages {
 
-        stage('Checkout Code') {
+        stage('Build') {
             steps {
-                git branch: 'main', url: 'https://github.com/uzairinayat/car_website.git'
-            }
-        }
+                echo 'Building the app'
 
-        stage('Install Dependencies') {
-            steps {
+                // Install dependencies
                 bat 'npm install'
+                
+                // Build Angular project
+                bat 'npm run build'
+
+                echo 'Build completed'
             }
         }
 
-        stage('Build Angular App') {
+        stage('Test') {
             steps {
-                bat 'npm run build -- --configuration production --base-href /CAR/'
+                echo 'Running Test'
+
             }
         }
 
-        stage('Clean Old Deployment') {
+        stage('Deploy') {
             steps {
-                bat """
-                if exist "%DEPLOY_PATH%" rmdir /S /Q "%DEPLOY_PATH%"
-                mkdir "%DEPLOY_PATH%"
-                """
-            }
-        }
-
-        stage('Deploy to Tomcat Server') {
-            steps {
-                bat """
-                xcopy /E /I /Y dist\\car_website\\* "%DEPLOY_PATH%\\"
-                """
+                echo 'Deploying the app'
             }
         }
     }
 
-    post {
-
-        success {
-            echo 'Deployment Successful'
-
-            emailext(
-                to: 'youremail@gmail.com',
-                subject: "SUCCESS: ${APP_NAME} Deployed Successfully",
-                body: """
-Hello,
-
-Your application ${APP_NAME} has been deployed successfully.
-
-Server: 10.1.1.251
-Path: ${DEPLOY_PATH}
-URL: http://10.1.1.251:8080/CAR/
-
-Regards,
-Jenkins
-"""
-            )
-        }
-
-        failure {
-            echo 'Deployment Failed'
-
-            emailext(
-                to: 'youremail@gmail.com',
-                subject: "FAILED: ${APP_NAME} Deployment",
-                body: """
-Hello,
-
-Deployment FAILED for ${APP_NAME}.
-
-Please check Jenkins logs for details.
-
-Server: 10.1.1.251
-
-Regards,
-Jenkins
-"""
-            )
-        }
+ post {
+    success {
+        emailext(
+            to: 'uzairinayat42@gmail.com',
+            subject: 'Jenkins Success',
+            body: 'Pipeline completed successfully',
+        )
     }
+}
 }
