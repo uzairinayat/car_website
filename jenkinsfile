@@ -26,21 +26,19 @@ pipeline {
             }
         }
 
-        stage('Deploy') {
-    steps {
-        echo 'Deploying to EC2...'
-
-        sshagent(['ec2-ssh']) {
-            bat '''
-            ssh -o StrictHostKeyChecking=no ec2-user@34.196.168.199 "sudo rm -rf /var/www/html/*"
-
-            scp -o StrictHostKeyChecking=no -r dist/car_website/browser/* ec2-user@34.196.168.199:/tmp/
-
-            ssh -o StrictHostKeyChecking=no ec2-user@34.196.168.199 "sudo cp -r /tmp/* /var/www/html/ && sudo systemctl restart nginx"
-            '''
-        }
-    }
-}
+       stage('Deploy') {
+          steps {
+              echo 'Deploying to EC2...'
+      
+              bat '''
+              ssh -o StrictHostKeyChecking=no ec2-user@34.196.168.199 "sudo rm -rf /var/www/html/*"
+      
+              scp -o StrictHostKeyChecking=no -r dist/car_website/browser/* ec2-user@34.196.168.199:/tmp/
+      
+              ssh -o StrictHostKeyChecking=no ec2-user@34.196.168.199 "sudo cp -r /tmp/* /var/www/html/ && sudo systemctl restart nginx"
+              '''
+          }
+      }
     }
 
     post {
