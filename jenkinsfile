@@ -2,20 +2,10 @@ pipeline {
     agent any
 
     environment {
-        SERVER_HOST = "10.1.1.221"
-        SERVER_USER = "root"
-
-        // IMPORTANT: @ must be %40
-        SERVER_PASS = "Comp%40123"
-
-        TOMCAT_PATH = "/root/Desktop/apache-tomcat-9.0.20/webapps"
-
-        LOCAL_BUILD = "dist/car_website/browser"
-
-        WINSCPCMD = "C:\\Program Files (x86)\\WinSCP\\WinSCP.com"
-
-        // HOST KEY (copy from your first connection log)
-        HOST_KEY = "ssh-ed25519 255 dqYIyVzCtK1+a2hZmjhdhG9A3dMhoY1l5xfRrCNm97I"
+        SERVER_HOST  = '10.1.1.251'
+        SERVER_USER  = 'testing'
+        TOMCAT_PATH  = 'C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0\\webapps\\CAR'
+        LOCAL_BUILD  = 'dist\\car_website\\browser'
     }
 
     triggers {
@@ -23,11 +13,9 @@ pipeline {
     }
 
     stages {
-
         stage('Checkout Code') {
             steps {
-                git branch: 'main',
-                url: 'https://github.com/uzairinayat/car_website.git'
+                git branch: 'main', url: 'https://github.com/uzairinayat/car_website.git'
             }
         }
 
@@ -49,28 +37,40 @@ pipeline {
             }
         }
 
-        stage('Deploy via WinSCP') {
+        stage('Deploy via WinRM') {
             steps {
-                bat """
-                "${WINSCPCMD}" /command ^
-                "open sftp://${SERVER_USER}:${SERVER_PASS}@${SERVER_HOST} -hostkey=\\"${HOST_KEY}\\"" ^
-                "option batch abort" ^
-                "option confirm off" ^
-                "rm ${TOMCAT_PATH}/*" ^
-                "put -r ${LOCAL_BUILD}/* ${TOMCAT_PATH}/" ^
-                "exit"
+                powershell """
+                    \$securePass = New-Object System.Security.SecureString
+                    \$cred = New-Object System.Management.Automation.PSCredential('${SERVER_USER}', \$securePass)
+                    \$session = New-PSSession -ComputerName '${SERVER_HOST}' -Credential \$cred -Authentication Negotiate
+
+                    # Ensure target folder exists (no deletion of existing files)
+                    Invoke-Command -Session \$session -ScriptBlock {
+                        New-Item -ItemType Directory -Path '${TOMCAT_PATH}' -Force | Out-Null
+                    }
+
+                    # Copy new build to remote Tomcat webapps/CAR, overwriting only matching files
+                    Copy-Item -Path '.\\${LOCAL_BUILD}\\*' -Destination '${TOMCAT_PATH}' -ToSession \$session -Recurse -Force
+
+                    Remove-PSSession \$session
                 """
             }
         }
 
         stage('Verify Deployment') {
             steps {
-                bat """
-                "${WINSCPCMD}" /command ^
-                "open sftp://${SERVER_USER}:${SERVER_PASS}@${SERVER_HOST} -hostkey=\\"${HOST_KEY}\\"" ^
-                "ls ${TOMCAT_PATH}" ^
-                "exit"
-                """
+                script {
+                    def status = bat(
+                        script: "curl -s -o NUL -w \"%%{http_code}\" http://%SERVER_HOST%:8080/CAR/",
+                        returnStdout: true
+                    ).trim()
+
+                    if (!status.endsWith('200')) {
+                        error "Deployment verification failed! HTTP status: ${status}"
+                    } else {
+                        echo "Deployment verified successfully! HTTP status: ${status}"
+                    }
+                }
             }
         }
     }
@@ -82,25 +82,22 @@ pipeline {
                 subject: "✅ SUCCESS: Build #${env.BUILD_NUMBER}",
                 body: """
 Pipeline SUCCESS
-
 ✔ Build completed
 ✔ Deployed to server
 ✔ Angular app updated
 
-URL:
-http://${SERVER_HOST}:8080/
+URL: http://${SERVER_HOST}:8080/CAR/
+Build: ${env.BUILD_NUMBER}
 """
             )
         }
-
         failure {
             emailext(
                 to: 'uzairinayat42@gmail.com',
                 subject: "❌ FAILED: Build #${env.BUILD_NUMBER}",
                 body: """
 Pipeline FAILED
-
-Check Jenkins console for details.
+Check Jenkins console for details: ${env.BUILD_URL}
 
 Server: ${SERVER_HOST}
 Build: ${env.BUILD_NUMBER}
