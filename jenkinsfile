@@ -4,7 +4,7 @@ pipeline {
     environment {
         SSH_SERVER = 'CarServer'
         REMOTE_DIR = '/var/www/html'
-        EMAIL_TO = 'your-email@gmail.com'
+        EMAIL_TO = 'uzairinayat42@gmail.com'
     }
 
     stages {
