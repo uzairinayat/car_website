@@ -1,53 +1,101 @@
 pipeline {
     agent any
+
     environment {
-        EC2_IP = "34.196.168.199"
-        DEPLOY_PATH = "/usr/share/nginx/html"
-        BUILD_OUTPUT = "dist/car_website/browser"
+        SSH_SERVER = 'CarServer'
+        REMOTE_DIR = '/var/www/html'
+        EMAIL_TO = 'uzairinayat42@gmail.com'
     }
+
     stages {
+
         stage('Checkout') {
             steps {
                 git branch: 'main', url: 'https://github.com/uzairinayat/car_website.git'
             }
         }
+
         stage('Install Dependencies') {
             steps {
-                bat 'npm ci'
+                sh 'npm install'
             }
         }
+
         stage('Build') {
             steps {
-                bat 'npm run build'
+                sh 'npm run build --prod'
             }
         }
+
+        stage('Test') {
+            steps {
+                sh 'npm test -- --watch=false --browsers=ChromeHeadless'
+            }
+        }
+
         stage('Deploy') {
             steps {
-                echo 'Deploying to EC2...'
-                withCredentials([sshUserPrivateKey(credentialsId: 'ec2-ssh', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER')]) {
-                    bat """
-                    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -i "%SSH_KEY%" %SSH_USER%@%EC2_IP% "mkdir -p /tmp/deploy_%BUILD_NUMBER%"
-                    scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -i "%SSH_KEY%" -r %BUILD_OUTPUT% %SSH_USER%@%EC2_IP%:/tmp/deploy_%BUILD_NUMBER%/
-                    ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL -i "%SSH_KEY%" %SSH_USER%@%EC2_IP% "sudo rm -rf %DEPLOY_PATH%/* && sudo cp -r /tmp/deploy_%BUILD_NUMBER%/browser/* %DEPLOY_PATH%/ && sudo rm -rf /tmp/deploy_%BUILD_NUMBER% && sudo systemctl reload nginx"
-                    """
-                }
+                sshPublisher(publishers: [
+                    sshPublisherDesc(
+                        configName: SSH_SERVER,
+                        transfers: [
+                            sshTransfer(
+                                sourceFiles: 'dist/**',
+                                removePrefix: 'dist',
+                                remoteDirectory: REMOTE_DIR,
+                                execCommand: '''
+                                    sudo rm -rf /var/www/html/*
+                                    sudo cp -r * /var/www/html/
+                                    sudo systemctl restart httpd
+                                '''
+                            )
+                        ],
+                        verbose: true
+                    )
+                ])
             }
         }
     }
+
     post {
+
         success {
-            emailext(
-                to: 'uzairinayat42@gmail.com',
-                subject: 'Deployment Success 🚀',
-                body: 'car_website deployed successfully on EC2'
-            )
+            echo 'Pipeline SUCCESS ✅'
+
+            mail to: "${EMAIL_TO}",
+                 subject: "SUCCESS: Jenkins Build Passed ✔",
+                 body: """
+Hello,
+
+Your Jenkins pipeline completed successfully 🎉
+
+Project: car_website
+Status: SUCCESS
+Server: CarServer
+Deployment: Done
+
+Regards,
+Jenkins CI/CD
+"""
         }
+
         failure {
-            emailext(
-                to: 'uzairinayat42@gmail.com',
-                subject: 'Deployment Failed ❌',
-                body: 'Check Jenkins logs'
-            )
+            echo 'Pipeline FAILED ❌'
+
+            mail to: "${EMAIL_TO}",
+                 subject: "FAILED: Jenkins Build ❌",
+                 body: """
+Hello,
+
+Your Jenkins pipeline has failed.
+
+Project: car_website
+Status: FAILED
+Please check Jenkins logs for details.
+
+Regards,
+Jenkins CI/CD
+"""
         }
     }
 }
