@@ -4,32 +4,26 @@ pipeline {
     environment {
         SSH_SERVER = 'CarServer'
         REMOTE_DIR = '/var/www/html'
-        EMAIL_TO = 'uzairinayat42@gmail.com'
+        EMAIL_TO = 'your-email@gmail.com'
     }
 
     stages {
 
-        stage('Checkout') {
-            steps {
-                git branch: 'main', url: 'https://github.com/uzairinayat/car_website.git'
-            }
-        }
-
         stage('Install Dependencies') {
             steps {
-                sh 'npm install'
+                bat 'npm install'
             }
         }
 
         stage('Build') {
             steps {
-                sh 'npm run build --prod'
+                bat 'npm run build'
             }
         }
 
         stage('Test') {
             steps {
-                sh 'npm test -- --watch=false --browsers=ChromeHeadless'
+                bat 'npm test -- --watch=false'
             }
         }
 
@@ -60,42 +54,15 @@ pipeline {
     post {
 
         success {
-            echo 'Pipeline SUCCESS ✅'
-
             mail to: "${EMAIL_TO}",
-                 subject: "SUCCESS: Jenkins Build Passed ✔",
-                 body: """
-Hello,
-
-Your Jenkins pipeline completed successfully 🎉
-
-Project: car_website
-Status: SUCCESS
-Server: CarServer
-Deployment: Done
-
-Regards,
-Jenkins CI/CD
-"""
+            subject: "SUCCESS: Build Passed",
+            body: "Deployment SUCCESS on EC2 🚀"
         }
 
         failure {
-            echo 'Pipeline FAILED ❌'
-
             mail to: "${EMAIL_TO}",
-                 subject: "FAILED: Jenkins Build ❌",
-                 body: """
-Hello,
-
-Your Jenkins pipeline has failed.
-
-Project: car_website
-Status: FAILED
-Please check Jenkins logs for details.
-
-Regards,
-Jenkins CI/CD
-"""
+            subject: "FAILED: Build Broken",
+            body: "Check Jenkins logs ❌"
         }
     }
 }
