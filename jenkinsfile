@@ -11,9 +11,9 @@ pipeline {
         EMAIL_TO = "uzairinayat42@gmail.com"
     }
 
- // ✅ AUTO TRIGGER WHEN CODE CHANGES
+// ✅ TRIGGER FROM GITHUB WEBHOOK
     triggers {
-        pollSCM('* * * * *')   // checks every 1 minute
+        githubPush()
     }
 
     stages {
