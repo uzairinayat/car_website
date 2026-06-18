@@ -5,15 +5,11 @@ pipeline {
         TOMCAT_HOME = "C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0"
         DEPLOY_PATH = "${TOMCAT_HOME}\\webapps\\car"
 
-        // ✅ FIXED PATH (IMPORTANT)
         BUILD_PATH = "dist\\car_website\\browser"
 
-        EMAIL_TO = "uzairinayat42@gmail.com"
-    }
+        BACKUP_ROOT = "C:\\jenkins_backups\\car"
 
-// ✅ TRIGGER FROM GITHUB WEBHOOK
-    triggers {
-        githubPush()
+        EMAIL_TO = "uzairinayat42@gmail.com"
     }
 
     stages {
@@ -36,26 +32,33 @@ pipeline {
             }
         }
 
-        stage('Verify Build Output') {
-            steps {
-                bat "dir dist\\car_website\\browser"
-            }
-        }
-
-        stage('Clean Old Deployment') {
+        stage('Create Versioned Backup + Deploy') {
             steps {
                 bat """
+                setlocal enabledelayedexpansion
+
+                REM Find next version number
+                set VERSION=1
+
+                :loop
+                if exist "%BACKUP_ROOT%\\car!VERSION!" (
+                    set /a VERSION+=1
+                    goto loop
+                )
+
+                REM Create backup folder
+                mkdir "%BACKUP_ROOT%\\car!VERSION!"
+
+                REM Backup old deployment if exists
                 if exist "%DEPLOY_PATH%" (
+                    xcopy "%DEPLOY_PATH%\\*" "%BACKUP_ROOT%\\car!VERSION!\\" /E /I /Y
                     rmdir /s /q "%DEPLOY_PATH%"
                 )
-                """
-            }
-        }
 
-        stage('Deploy to Tomcat Webapps') {
-            steps {
-                bat """
+                REM Deploy new build
                 xcopy "%BUILD_PATH%\\*" "%DEPLOY_PATH%\\" /E /I /Y
+
+                endlocal
                 """
             }
         }
@@ -70,13 +73,21 @@ pipeline {
         }
     }
 
- post {
-    success {
-        emailext(
-            to: 'uzairinayat42@gmail.com',
-            subject: 'Jenkins Success',
-            body: 'Pipeline completed successfully',
-        )
+    post {
+        success {
+            emailext(
+                to: "${EMAIL_TO}",
+                subject: "SUCCESS: Build Deployed",
+                body: "New build deployed and backup created in C:\\jenkins_backups"
+            )
+        }
+
+        failure {
+            emailext(
+                to: "${EMAIL_TO}",
+                subject: "FAILED: Deployment",
+                body: "Pipeline failed. Check Jenkins logs."
+            )
+        }
     }
-}
 }
