@@ -3,8 +3,7 @@ pipeline {
 
     environment {
         TOMCAT_WEBAPPS = "C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0\\webapps"
-        BUILD_FOLDER = "dist\\car-website\\car_website\\browser"
-        EMAIL_TO = "uzairinayat42@example.com"
+        APP_NAME = "browser"
     }
 
     stages {
@@ -15,66 +14,42 @@ pipeline {
             }
         }
 
-        stage('Build Step (SKIPPED - already built)') {
+        stage('Install Dependencies') {
             steps {
-                echo "Skipping build (No NodeJS used)"
-                echo "Assuming browser folder already exists"
+                bat 'npm install'
             }
         }
 
-        stage('Deploy Browser Files to Tomcat ROOT') {
+        stage('Build Angular App') {
             steps {
-                bat """
-                echo ================================
-                echo Deploying Angular browser files
-                echo WITHOUT ROOT or folder name
-                echo ================================
-
-                REM Clean only old frontend files (safe cleanup)
-                del /Q "%TOMCAT_WEBAPPS%\\*.html"
-                del /Q "%TOMCAT_WEBAPPS%\\*.js"
-                del /Q "%TOMCAT_WEBAPPS%\\*.css"
-                del /Q "%TOMCAT_WEBAPPS%\\*.ico" 2>nul
-                rmdir /S /Q "%TOMCAT_WEBAPPS%\\assets" 2>nul
-
-                REM Copy browser build directly into webapps root
-                xcopy /E /Y /I "%BUILD_FOLDER%\\*" "%TOMCAT_WEBAPPS%"
-
-                echo Deployment Completed Successfully
-                """
+                bat 'npm run build'
             }
         }
-    }
 
-    post {
+        stage('Deploy to Local Tomcat') {
+            steps {
+                script {
+                    // Angular output path (adjust if needed)
+                    def buildPath = "C:\ProgramData\Jenkins\.jenkins\workspace\car\dist\car_website\browser"
 
-        success {
-            mail to: "${EMAIL_TO}",
-                 subject: "✅ Angular Deployed Successfully (Tomcat ROOT)",
-                 body: """
-SUCCESS 🎉
+                    // Target deployment folder (NOT ROOT)
+                    def targetPath = "${env.TOMCAT_WEBAPPS}\\${env.APP_NAME}"
 
-Angular browser build deployed directly into:
+                    bat """
+                        echo Deploying to Tomcat...
 
-${TOMCAT_WEBAPPS}
+                        REM Remove previous deployment
+                        if exist "${targetPath}" (
+                            rmdir /s /q "${targetPath}"
+                        )
 
-No ROOT folder used.
-No NodeJS used.
+                        REM Copy new build to Tomcat webapps folder
+                        robocopy "${buildPath}" "${targetPath}" /E
 
-URL:
-http://localhost:8181/
-"""
-        }
-
-        failure {
-            mail to: "${EMAIL_TO}",
-                 subject: "❌ Deployment Failed",
-                 body: """
-Pipeline FAILED ❌
-
-Check Jenkins logs:
-${env.BUILD_URL}
-"""
+                        echo Deployment completed.
+                    """
+                }
+            }
         }
     }
 }
