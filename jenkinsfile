@@ -1,14 +1,10 @@
 pipeline {
     agent any
 
-    tools {
-        nodejs 'NodeJS'
-    }
-
     environment {
         TOMCAT_WEBAPPS = "C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0\\webapps"
-        BUILD_BROWSER = "dist\\car-website\\car_website\\browser"
-        EMAIL_TO = "uzairinayat42@gmail.com"
+        BUILD_FOLDER = "dist\\car-website\\car_website\\browser"
+        EMAIL_TO = "uzairinayat42@example.com"
     }
 
     stages {
@@ -19,39 +15,32 @@ pipeline {
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Build Step (SKIPPED - already built)') {
             steps {
-                bat 'npm install'
+                echo "Skipping build (No NodeJS used)"
+                echo "Assuming browser folder already exists"
             }
         }
 
-        stage('Build Angular') {
-            steps {
-                bat 'npm run build'
-            }
-        }
-
-        stage('Deploy DIRECTLY to Tomcat webapps (NO ROOT, NO FOLDER)') {
+        stage('Deploy Browser Files to Tomcat ROOT') {
             steps {
                 bat """
-                echo =========================================
-                echo Deploying browser files directly to webapps
-                echo =========================================
+                echo ================================
+                echo Deploying Angular browser files
+                echo WITHOUT ROOT or folder name
+                echo ================================
 
-                REM IMPORTANT: clean ONLY static files (NOT ROOT folder)
-                
+                REM Clean only old frontend files (safe cleanup)
                 del /Q "%TOMCAT_WEBAPPS%\\*.html"
                 del /Q "%TOMCAT_WEBAPPS%\\*.js"
                 del /Q "%TOMCAT_WEBAPPS%\\*.css"
-                del /Q "%TOMCAT_WEBAPPS%\\*.ico"
+                del /Q "%TOMCAT_WEBAPPS%\\*.ico" 2>nul
+                rmdir /S /Q "%TOMCAT_WEBAPPS%\\assets" 2>nul
 
-                rmdir /S /Q "%TOMCAT_WEBAPPS%\\assets"
+                REM Copy browser build directly into webapps root
+                xcopy /E /Y /I "%BUILD_FOLDER%\\*" "%TOMCAT_WEBAPPS%"
 
-                echo Copying browser build files...
-
-                xcopy /E /Y /I "%BUILD_BROWSER%\\*" "%TOMCAT_WEBAPPS%"
-
-                echo Deployment completed directly into webapps root
+                echo Deployment Completed Successfully
                 """
             }
         }
@@ -61,14 +50,16 @@ pipeline {
 
         success {
             mail to: "${EMAIL_TO}",
-                 subject: "✅ Angular Deployed to Tomcat ROOT",
+                 subject: "✅ Angular Deployed Successfully (Tomcat ROOT)",
                  body: """
 SUCCESS 🎉
 
-Angular app deployed directly into:
-C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0\\webapps
+Angular browser build deployed directly into:
+
+${TOMCAT_WEBAPPS}
 
 No ROOT folder used.
+No NodeJS used.
 
 URL:
 http://localhost:8181/
@@ -79,7 +70,9 @@ http://localhost:8181/
             mail to: "${EMAIL_TO}",
                  subject: "❌ Deployment Failed",
                  body: """
-Pipeline failed. Check Jenkins logs:
+Pipeline FAILED ❌
+
+Check Jenkins logs:
 ${env.BUILD_URL}
 """
         }
