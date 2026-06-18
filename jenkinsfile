@@ -4,7 +4,10 @@ pipeline {
     environment {
         TOMCAT_HOME = "C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0"
         DEPLOY_PATH = "${TOMCAT_HOME}\\webapps\\car"
-        BUILD_PATH = "dist\\car-website\\car"   // change if needed
+
+        // ✅ FIXED PATH (IMPORTANT)
+        BUILD_PATH = "dist\\car_website\\browser"
+
         EMAIL_TO = "uzairinayat42@gmail.com"
     }
 
@@ -24,7 +27,13 @@ pipeline {
 
         stage('Build Angular App') {
             steps {
-               bat "npx ng build --configuration production --base-href=/car/"
+                bat "npx ng build --configuration production --base-href=/car/"
+            }
+        }
+
+        stage('Verify Build Output') {
+            steps {
+                bat "dir dist\\car_website\\browser"
             }
         }
 
@@ -57,29 +66,16 @@ pipeline {
     }
 
     post {
-
         success {
             mail to: "${EMAIL_TO}",
-                 subject: "SUCCESS: Tomcat Deployment",
-                 body: """
-Deployment SUCCESSFUL 🚀
-
-App URL: http://localhost:8181/car/
-Path: ${DEPLOY_PATH}
-"""
+            subject: "SUCCESS: Tomcat Deployment",
+            body: "Deployment SUCCESSFUL 🚀 \nhttp://localhost:8181/car/"
         }
 
         failure {
             mail to: "${EMAIL_TO}",
-                 subject: "FAILED: Tomcat Deployment",
-                 body: """
-Deployment FAILED ❌
-
-Check Jenkins logs.
-
-Job: ${env.JOB_NAME}
-Build: ${env.BUILD_NUMBER}
-"""
+            subject: "FAILED: Tomcat Deployment",
+            body: "Check Jenkins logs for errors."
         }
     }
 }
