@@ -30,7 +30,7 @@ pipeline {
             steps {
                 script {
                     // Angular output path (adjust if needed)
-                    def buildPath = "C:\ProgramData\Jenkins\.jenkins\workspace\car\dist\car_website\browser"
+                    def buildPath = "C:/ProgramData/Jenkins/.jenkins/workspace/car/dist/car_website/browser"
 
                     // Target deployment folder (NOT ROOT)
                     def targetPath = "${env.TOMCAT_WEBAPPS}\\${env.APP_NAME}"
