@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         TOMCAT_WEBAPPS = "C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0\\webapps"
-        APP_NAME = "browser"
+        APP_NAME = "CAR"
     }
 
     stages {
