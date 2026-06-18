@@ -11,11 +11,6 @@ pipeline {
         EMAIL_TO = "uzairinayat42@gmail.com"
     }
 
-// ✅ TRIGGER FROM GITHUB WEBHOOK
-    triggers {
-        githubPush()
-    }
-
     stages {
 
         stage('Checkout Code') {
