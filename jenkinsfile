@@ -6,8 +6,8 @@ pipeline {
     }
 
     environment {
-        APP_NAME = "car-website"
-        TOMCAT_DEPLOY = "C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0\\webapps\\car-website"
+        TOMCAT_WEBAPPS = "C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0\\webapps"
+        BUILD_BROWSER = "dist\\car-website\\car_website\\browser"
         EMAIL_TO = "uzairinayat42@gmail.com"
     }
 
@@ -31,23 +31,27 @@ pipeline {
             }
         }
 
-        stage('Deploy ONLY browser folder') {
+        stage('Deploy DIRECTLY to Tomcat webapps (NO ROOT, NO FOLDER)') {
             steps {
                 bat """
-                echo ================================
-                echo Deploying ONLY browser folder
-                echo ================================
+                echo =========================================
+                echo Deploying browser files directly to webapps
+                echo =========================================
 
-                REM Remove old deployment
-                rmdir /S /Q "%TOMCAT_DEPLOY%"
+                REM IMPORTANT: clean ONLY static files (NOT ROOT folder)
+                
+                del /Q "%TOMCAT_WEBAPPS%\\*.html"
+                del /Q "%TOMCAT_WEBAPPS%\\*.js"
+                del /Q "%TOMCAT_WEBAPPS%\\*.css"
+                del /Q "%TOMCAT_WEBAPPS%\\*.ico"
 
-                REM Create fresh folder
-                mkdir "%TOMCAT_DEPLOY%"
+                rmdir /S /Q "%TOMCAT_WEBAPPS%\\assets"
 
-                REM Copy ONLY browser content
-                xcopy /E /Y /I dist\\car-website\\car_website\\browser\\* "%TOMCAT_DEPLOY%"
+                echo Copying browser build files...
 
-                echo Deployment Completed
+                xcopy /E /Y /I "%BUILD_BROWSER%\\*" "%TOMCAT_WEBAPPS%"
+
+                echo Deployment completed directly into webapps root
                 """
             }
         }
@@ -57,24 +61,25 @@ pipeline {
 
         success {
             mail to: "${EMAIL_TO}",
-                 subject: "✅ SUCCESS: Car Website Deployed",
+                 subject: "✅ Angular Deployed to Tomcat ROOT",
                  body: """
-Deployment Successful 🎉
+SUCCESS 🎉
 
-App: ${APP_NAME}
-URL: http://localhost:8181/${APP_NAME}
+Angular app deployed directly into:
+C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0\\webapps
 
-Deployed ONLY browser folder into Tomcat webapps.
+No ROOT folder used.
+
+URL:
+http://localhost:8181/
 """
         }
 
         failure {
             mail to: "${EMAIL_TO}",
-                 subject: "❌ FAILED: Car Website Deployment",
+                 subject: "❌ Deployment Failed",
                  body: """
-Deployment Failed ❌
-
-Check Jenkins logs:
+Pipeline failed. Check Jenkins logs:
 ${env.BUILD_URL}
 """
         }
