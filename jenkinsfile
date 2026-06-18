@@ -2,13 +2,15 @@ pipeline {
     agent any
 
     environment {
-        TOMCAT_WEBAPPS = "C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0\\webapps"
-        APP_NAME = "CAR"
+        TOMCAT_HOME = "C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0"
+        DEPLOY_PATH = "${TOMCAT_HOME}\\webapps\\car"
+        BUILD_PATH = "dist\\car-website\\car"   // change if needed
+        EMAIL_TO = "uzairinayat42@gmail.com"
     }
 
     stages {
 
-        stage('Checkout') {
+        stage('Checkout Code') {
             steps {
                 git branch: 'main', url: 'https://github.com/uzairinayat/car_website.git'
             }
@@ -22,34 +24,62 @@ pipeline {
 
         stage('Build Angular App') {
             steps {
-                bat 'npm run build'
+                bat 'npm run build --configuration production --base-href /car/'
             }
         }
 
-        stage('Deploy to Local Tomcat') {
+        stage('Clean Old Deployment') {
             steps {
-                script {
-                    // Angular output path (adjust if needed)
-                    def buildPath = "C:/ProgramData/Jenkins/.jenkins/workspace/car/dist/car_website/browser"
-
-                    // Target deployment folder (NOT ROOT)
-                    def targetPath = "${env.TOMCAT_WEBAPPS}\\${env.APP_NAME}"
-
-                    bat """
-                        echo Deploying to Tomcat...
-
-                        REM Remove previous deployment
-                        if exist "${targetPath}" (
-                            rmdir /s /q "${targetPath}"
-                        )
-
-                        REM Copy new build to Tomcat webapps folder
-                        robocopy "${buildPath}" "${targetPath}" /E
-
-                        echo Deployment completed.
-                    """
-                }
+                bat """
+                if exist "%DEPLOY_PATH%" (
+                    rmdir /s /q "%DEPLOY_PATH%"
+                )
+                """
             }
+        }
+
+        stage('Deploy to Tomcat Webapps') {
+            steps {
+                bat """
+                xcopy "%BUILD_PATH%\\*" "%DEPLOY_PATH%\\" /E /I /Y
+                """
+            }
+        }
+
+        stage('Restart Tomcat') {
+            steps {
+                bat """
+                net stop Tomcat9
+                net start Tomcat9
+                """
+            }
+        }
+    }
+
+    post {
+
+        success {
+            mail to: "${EMAIL_TO}",
+                 subject: "SUCCESS: Tomcat Deployment",
+                 body: """
+Deployment SUCCESSFUL 🚀
+
+App URL: http://localhost:8181/car/
+Path: ${DEPLOY_PATH}
+"""
+        }
+
+        failure {
+            mail to: "${EMAIL_TO}",
+                 subject: "FAILED: Tomcat Deployment",
+                 body: """
+Deployment FAILED ❌
+
+Check Jenkins logs.
+
+Job: ${env.JOB_NAME}
+Build: ${env.BUILD_NUMBER}
+"""
         }
     }
 }
