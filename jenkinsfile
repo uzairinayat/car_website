@@ -1,31 +1,71 @@
 pipeline {
     agent any
 
+    environment {
+        TOMCAT_HOME = "C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0"
+        DEPLOY_PATH = "${TOMCAT_HOME}\\webapps\\car"
+
+        // ✅ FIXED PATH (IMPORTANT)
+        BUILD_PATH = "dist\\car_website\\browser"
+
+        EMAIL_TO = "uzairinayat42@gmail.com"
+    }
+
+// ✅ TRIGGER FROM GITHUB WEBHOOK
+    triggers {
+        githubPush()
+    }
+
     stages {
 
-        stage('Build') {
+        stage('Checkout Code') {
             steps {
-                echo 'Building the app'
+                git branch: 'main', url: 'https://github.com/uzairinayat/car_website.git'
+            }
+        }
 
-                // Install dependencies
+        stage('Install Dependencies') {
+            steps {
                 bat 'npm install'
-                
-                // Build Angular project
-                bat 'npm run build'
-
-                echo 'Build completed'
             }
         }
 
-        stage('Test') {
+        stage('Build Angular App') {
             steps {
-                echo 'Testing the app'
+                bat "npx ng build --configuration production --base-href=/car/"
             }
         }
 
-        stage('Deploy') {
+        stage('Verify Build Output') {
             steps {
-                echo 'Deploying the app'
+                bat "dir dist\\car_website\\browser"
+            }
+        }
+
+        stage('Clean Old Deployment') {
+            steps {
+                bat """
+                if exist "%DEPLOY_PATH%" (
+                    rmdir /s /q "%DEPLOY_PATH%"
+                )
+                """
+            }
+        }
+
+        stage('Deploy to Tomcat Webapps') {
+            steps {
+                bat """
+                xcopy "%BUILD_PATH%\\*" "%DEPLOY_PATH%\\" /E /I /Y
+                """
+            }
+        }
+
+        stage('Restart Tomcat') {
+            steps {
+                bat """
+                net stop Tomcat9
+                net start Tomcat9
+                """
             }
         }
     }
