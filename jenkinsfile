@@ -24,7 +24,7 @@ pipeline {
 
         stage('Build Angular App') {
             steps {
-                bat 'npm run build --configuration production --base-href /car/'
+               bat "npx ng build --configuration production --base-href=/car/"
             }
         }
 
