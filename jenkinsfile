@@ -2,12 +2,18 @@ pipeline {
     agent any
 
     environment {
-        SSH_SERVER = 'CarServer'
-        REMOTE_DIR = '/var/www/html'
-        EMAIL_TO = 'uzairinayat42@gmail.com'
+        APP_NAME = "car-website"
+        TOMCAT_WEBAPPS = "C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0\\webapps"
+        EMAIL_TO = "uzairinayat42@gmail.com"   
     }
 
     stages {
+
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/uzairinayat/car_website.git'
+            }
+        }
 
         stage('Install Dependencies') {
             steps {
@@ -15,38 +21,27 @@ pipeline {
             }
         }
 
-        stage('Build') {
+        stage('Build Angular App') {
             steps {
                 bat 'npm run build'
             }
         }
 
-        stage('Test') {
+        stage('Deploy to Tomcat (Windows)') {
             steps {
-                bat 'npm test -- --watch=false'
-            }
-        }
+                bat """
+                echo Cleaning old deployment...
 
-        stage('Deploy') {
-            steps {
-                sshPublisher(publishers: [
-                    sshPublisherDesc(
-                        configName: SSH_SERVER,
-                        transfers: [
-                            sshTransfer(
-                                sourceFiles: 'dist/**',
-                                removePrefix: 'dist',
-                                remoteDirectory: REMOTE_DIR,
-                                execCommand: '''
-                                    sudo rm -rf /var/www/html/*
-                                    sudo cp -r * /var/www/html/
-                                    sudo systemctl restart httpd
-                                '''
-                            )
-                        ],
-                        verbose: true
-                    )
-                ])
+                rmdir /S /Q "%TOMCAT_WEBAPPS%\\%APP_NAME%" 
+
+                mkdir "%TOMCAT_WEBAPPS%\\%APP_NAME%"
+
+                echo Copying new build...
+
+                xcopy /E /Y /I dist\\* "%TOMCAT_WEBAPPS%\\%APP_NAME%"
+
+                echo Deployment Done
+                """
             }
         }
     }
@@ -54,15 +49,34 @@ pipeline {
     post {
 
         success {
+            echo 'Deployment Successful 🎉'
+
             mail to: "${EMAIL_TO}",
-            subject: "SUCCESS: Build Passed",
-            body: "Deployment SUCCESS on EC2 🚀"
+                 subject: "✅ SUCCESS: ${APP_NAME} deployed",
+                 body: """
+Hello,
+
+Your Angular app has been successfully deployed on Tomcat.
+
+🌐 URL: http://localhost:8181/${APP_NAME}
+
+Build: ${env.BUILD_URL}
+"""
         }
 
         failure {
+            echo 'Deployment Failed ❌'
+
             mail to: "${EMAIL_TO}",
-            subject: "FAILED: Build Broken",
-            body: "Check Jenkins logs ❌"
+                 subject: "❌ FAILED: ${APP_NAME} deployment",
+                 body: """
+Hello,
+
+Your Jenkins pipeline failed.
+
+Check details:
+${env.BUILD_URL}
+"""
         }
     }
 }
