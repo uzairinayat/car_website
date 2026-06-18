@@ -31,15 +31,15 @@ pipeline {
             steps {
                 bat """
                 echo Cleaning old deployment...
-
+        
                 rmdir /S /Q "%TOMCAT_WEBAPPS%\\%APP_NAME%" 
-
+        
                 mkdir "%TOMCAT_WEBAPPS%\\%APP_NAME%"
-
-                echo Copying new build...
-
-                xcopy /E /Y /I dist\\* "%TOMCAT_WEBAPPS%\\%APP_NAME%"
-
+        
+                echo Copying ONLY browser folder content...
+        
+                xcopy /E /Y /I dist\\car-website\\car_website\\browser\\* "%TOMCAT_WEBAPPS%\\%APP_NAME%"
+        
                 echo Deployment Done
                 """
             }
