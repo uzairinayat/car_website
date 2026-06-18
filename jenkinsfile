@@ -73,5 +73,12 @@ pipeline {
             body: 'Pipeline completed successfully',
         )
     }
+ failure {
+            emailext(
+                to: 'uzairinayat42@gmail.com',
+                subject: 'Jenkins Failed',
+                body: 'Pipeline failed. Check Jenkins logs.'
+            )
+        }
 }
 }
