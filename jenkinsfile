@@ -65,17 +65,13 @@ pipeline {
         }
     }
 
-    post {
-        success {
-            mail to: "${EMAIL_TO}",
-            subject: "SUCCESS: Tomcat Deployment",
-            body: "Deployment SUCCESSFUL 🚀 \nhttp://localhost:8181/car/"
-        }
-
-        failure {
-            mail to: "${EMAIL_TO}",
-            subject: "FAILED: Tomcat Deployment",
-            body: "Check Jenkins logs for errors."
-        }
+ post {
+    success {
+        emailext(
+            to: 'uzairinayat42@gmail.com',
+            subject: 'Jenkins Success',
+            body: 'Pipeline completed successfully',
+        )
     }
+}
 }
