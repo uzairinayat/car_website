@@ -11,6 +11,11 @@ pipeline {
         EMAIL_TO = "uzairinayat42@gmail.com"
     }
 
+ // ✅ AUTO TRIGGER WHEN CODE CHANGES
+    triggers {
+        pollSCM('* * * * *')   // checks every 1 minute
+    }
+
     stages {
 
         stage('Checkout Code') {
