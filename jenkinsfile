@@ -2,15 +2,12 @@ pipeline {
     agent any
 
     environment {
+        TOMCAT_HOME = "C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0"
+        DEPLOY_PATH = "${TOMCAT_HOME}\\webapps\\car"
 
         BUILD_PATH = "dist\\car_website\\browser"
 
-        EC2_IP = "34.196.168.199"
-        EC2_USER = "ec2-user"
-
-        DEPLOY_PATH = "/usr/share/nginx/html/car"
-
-        KEY_PATH = "C:\\jenkins\\.ssh\\ec2-key.pem"
+        BACKUP_ROOT = "C:\\jenkins_backups\\car"
 
         EMAIL_TO = "uzairinayat42@gmail.com"
     }
@@ -35,35 +32,42 @@ pipeline {
             }
         }
 
-        stage('Verify Build') {
-            steps {
-                bat "dir %BUILD_PATH%"
-            }
-        }
-
-        stage('Fix Key Permissions (IMPORTANT)') {
+        stage('Create Versioned Backup + Deploy') {
             steps {
                 bat """
-                echo Fixing SSH key permissions...
+                setlocal enabledelayedexpansion
 
-                icacls "%KEY_PATH%" /inheritance:r
-                icacls "%KEY_PATH%" /grant:r "%USERNAME%:R"
+                REM Find next version number
+                set VERSION=1
+
+                :loop
+                if exist "%BACKUP_ROOT%\\car!VERSION!" (
+                    set /a VERSION+=1
+                    goto loop
+                )
+
+                REM Create backup folder
+                mkdir "%BACKUP_ROOT%\\car!VERSION!"
+
+                REM Backup old deployment if exists
+                if exist "%DEPLOY_PATH%" (
+                    xcopy "%DEPLOY_PATH%\\*" "%BACKUP_ROOT%\\car!VERSION!\\" /E /I /Y
+                    rmdir /s /q "%DEPLOY_PATH%"
+                )
+
+                REM Deploy new build
+                xcopy "%BUILD_PATH%\\*" "%DEPLOY_PATH%\\" /E /I /Y
+
+                endlocal
                 """
             }
         }
 
-        stage('Deploy to AWS Nginx') {
+        stage('Restart Tomcat') {
             steps {
                 bat """
-                echo ===== START DEPLOYMENT =====
-
-                REM Upload build
-                scp -i "%KEY_PATH%" -o StrictHostKeyChecking=no -r %BUILD_PATH%/. %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
-
-                REM Restart nginx
-                ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "sudo systemctl restart nginx || systemctl restart nginx"
-
-                echo ===== DEPLOYMENT COMPLETE =====
+                net stop Tomcat9
+                net start Tomcat9
                 """
             }
         }
@@ -73,16 +77,16 @@ pipeline {
         success {
             emailext(
                 to: "${EMAIL_TO}",
-                subject: "SUCCESS: AWS Deployment",
-                body: "Angular app deployed successfully to Nginx"
+                subject: "SUCCESS: Build Deployed",
+                body: "New build deployed and backup created in C:\\jenkins_backups"
             )
         }
 
         failure {
             emailext(
                 to: "${EMAIL_TO}",
-                subject: "FAILED: AWS Deployment",
-                body: "Check Jenkins logs"
+                subject: "FAILED: Deployment",
+                body: "Pipeline failed. Check Jenkins logs."
             )
         }
     }
