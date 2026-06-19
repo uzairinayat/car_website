@@ -2,14 +2,19 @@ pipeline {
     agent any
 
     environment {
-        TOMCAT_HOME = "C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0"
-        DEPLOY_PATH = "${TOMCAT_HOME}\\webapps\\car"
 
         BUILD_PATH = "dist/car_website/browser"
 
-        EMAIL_TO = "uzairinayat42@gmail.com"
+        EC2_IP = "34.196.168.199"
+        EC2_USER = "ec2-user"
 
-        TOMCAT_SERVICE = "Tomcat9"
+        DEPLOY_PATH = "/usr/share/nginx/html/car"
+
+        BACKUP_PATH = "/home/ec2-user/car_backups"
+
+        KEY_PATH = "C:\\jenkins\\.ssh\\ec2-key.pem"
+
+        EMAIL_TO = "uzairinayat42@gmail.com"
     }
 
     stages {
@@ -32,64 +37,63 @@ pipeline {
             }
         }
 
-        stage('Verify Build Output') {
+        stage('Verify Build') {
             steps {
                 bat "dir %BUILD_PATH%"
             }
         }
 
-        stage('Clean Old Deployment') {
+        stage('Fix SSH Key Permissions') {
             steps {
-                bat """
-                if exist "%DEPLOY_PATH%" (
-                    echo Removing old deployment...
-                    rmdir /s /q "%DEPLOY_PATH%"
-                )
-                """
+                bat '''
+                icacls "C:\\jenkins\\.ssh\\ec2-key.pem" /inheritance:r
+                icacls "C:\\jenkins\\.ssh\\ec2-key.pem" /grant:r "%USERNAME%:R"
+                '''
             }
         }
 
-        stage('Deploy to Tomcat') {
+        stage('Backup + Deploy to EC2 Nginx') {
             steps {
-                bat """
-                echo Deploying to Tomcat...
+                bat '''
+                echo Starting deployment...
 
-                xcopy "%BUILD_PATH%\\*" "%DEPLOY_PATH%\\" /E /I /Y
+                REM Create backup folder on EC2 (versioned backup)
+                ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "
+                    mkdir -p %BACKUP_PATH%/car_$(date +%Y%m%d_%H%M%S)
+                    cp -r %DEPLOY_PATH%/* %BACKUP_PATH%/car_$(date +%Y%m%d_%H%M%S)/ 2>/dev/null || true
+                "
 
-                if %ERRORLEVEL% NEQ 0 (
-                    echo DEPLOY FAILED
-                    exit /b 1
-                )
-                """
-            }
-        }
+                REM Clean old deployment + deploy new build
+                ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP "
+                    sudo rm -rf %DEPLOY_PATH%/*
+                "
 
-        stage('Restart Tomcat') {
-            steps {
-                bat """
-                echo Restarting Tomcat...
+                scp -i "%KEY_PATH%" -o StrictHostKeyChecking=no -r %BUILD_PATH%/. %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
 
-                net stop %TOMCAT_SERVICE%
-                net start %TOMCAT_SERVICE%
-                """
+                REM Restart nginx
+                ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP "
+                    sudo systemctl restart nginx
+                "
+                '''
             }
         }
     }
 
     post {
+
         success {
             emailext(
                 to: "${EMAIL_TO}",
-                subject: "SUCCESS: Angular deployed to Tomcat",
-                body: "Deployment completed successfully on Tomcat server"
+                subject: "SUCCESS: Angular deployed to AWS Nginx",
+                body: "Deployment successful. App live at http://${EC2_IP}/car/"
             )
         }
 
         failure {
             emailext(
                 to: "${EMAIL_TO}",
-                subject: "FAILED: Jenkins Deployment",
-                body: "Check Jenkins logs for errors"
+                subject: "FAILED: Deployment",
+                body: "Check Jenkins logs"
             )
         }
     }
