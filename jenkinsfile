@@ -2,11 +2,18 @@ pipeline {
     agent any
 
     environment {
+        // Angular build output
         BUILD_PATH = "dist/car_website/browser"
+
+        // EC2 details
         EC2_IP = "34.196.168.199"
         EC2_USER = "ec2-user"
         DEPLOY_PATH = "/usr/share/nginx/html/car"
+
+        // Email
         EMAIL_TO = "uzairinayat42@gmail.com"
+
+        // SSH Key (IMPORTANT FIXED PATH)
         KEY_PATH = "C:\\jenkins\\.ssh\\ec2-key.pem"
     }
 
@@ -20,43 +27,88 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                bat 'npm install'
+                bat '''
+                npm install
+                '''
             }
         }
 
         stage('Build Angular App') {
             steps {
-                bat "npx ng build --configuration production --base-href=/car/"
+                bat '''
+                npx ng build --configuration production --base-href=/car/
+                '''
+            }
+        }
+
+        stage('Verify Build Exists') {
+            steps {
+                bat '''
+                if not exist "%BUILD_PATH%" (
+                    echo BUILD FAILED - DIST FOLDER NOT FOUND
+                    exit /b 1
+                )
+                echo Build folder exists: %BUILD_PATH%
+                '''
+            }
+        }
+
+        stage('Fix SSH Key Permissions') {
+            steps {
+                bat '''
+                echo Fixing SSH key permissions...
+
+                icacls "%KEY_PATH%" /inheritance:r
+                icacls "%KEY_PATH%" /grant:r "%USERNAME%:R"
+                '''
             }
         }
 
         stage('Deploy to EC2 Nginx') {
             steps {
-                bat """
-                echo Deploying to EC2...
-        
-                scp -i "%KEY_PATH%" -o StrictHostKeyChecking=no -r %BUILD_PATH%/. %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
-        
-                ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP "sudo systemctl restart nginx"
-                """
+                bat '''
+                echo Deploying Angular build to EC2...
+
+                scp -i "%KEY_PATH%" ^
+                -o StrictHostKeyChecking=no ^
+                -r %BUILD_PATH%/. ^
+                %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
+
+                if errorlevel 1 (
+                    echo SCP FAILED
+                    exit /b 1
+                )
+
+                ssh -i "%KEY_PATH%" ^
+                -o StrictHostKeyChecking=no ^
+                %EC2_USER%@%EC2_IP% "sudo systemctl restart nginx"
+
+                if errorlevel 1 (
+                    echo SSH FAILED
+                    exit /b 1
+                )
+
+                echo DEPLOYMENT SUCCESSFUL
+                '''
             }
         }
     }
 
     post {
+
         success {
             emailext(
                 to: "${EMAIL_TO}",
-                subject: "SUCCESS: Angular Deployed",
-                body: "Deployment successful on EC2 Nginx"
+                subject: "SUCCESS: Angular Deployed to EC2",
+                body: "Deployment successful. App is live at http://${EC2_IP}/car/"
             )
         }
 
         failure {
             emailext(
                 to: "${EMAIL_TO}",
-                subject: "FAILED: Deployment",
-                body: "Check Jenkins logs"
+                subject: "FAILED: Deployment Pipeline",
+                body: "Check Jenkins logs for errors"
             )
         }
     }
