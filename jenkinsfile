@@ -59,7 +59,7 @@ pipeline {
                 echo Fixing SSH key permissions...
 
                 icacls "%KEY_PATH%" /inheritance:r
-                icacls "%KEY_PATH%" /grant:r "%USERNAME%:R"
+                icacls "%KEY_PATH%" /grant:r "SYSTEM:(R)"
                 '''
             }
         }
