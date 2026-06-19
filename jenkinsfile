@@ -2,21 +2,19 @@ pipeline {
     agent any
 
     environment {
+        BUILD_PATH = "dist\\car_website\\browser"
 
-        BUILD_PATH = "dist/car_website/browser"
-
+        // AWS CONFIG
         EC2_IP = "34.196.168.199"
         EC2_USER = "ec2-user"
+        KEY_PATH = "C:\\jenkins\\.ssh\\ec2-key.pem"
 
+        // SERVER PATHS
         DEPLOY_PATH = "/usr/share/nginx/html/car"
-
-        // EC2 backup folder
         REMOTE_BACKUP = "/home/ec2-user/car_backups"
 
-        // LOCAL backup folder (Windows Jenkins machine)
-        LOCAL_BACKUP = "C:\\jenkins_backups\\car"
-
-        KEY_PATH = "C:\\jenkins\\.ssh\\ec2-key.pem"
+        // LOCAL BACKUP
+        BACKUP_ROOT = "C:\\jenkins_backups\\car"
 
         EMAIL_TO = "uzairinayat42@gmail.com"
     }
@@ -47,55 +45,51 @@ pipeline {
             }
         }
 
-        stage('Create LOCAL Backup') {
+        // ✅ LOCAL BACKUP (same as your logic, improved)
+        stage('Local Backup') {
             steps {
                 bat """
-                echo Creating local backup...
+                setlocal enabledelayedexpansion
 
-                if not exist "%LOCAL_BACKUP%" (
-                    mkdir "%LOCAL_BACKUP%"
+                if not exist "%BACKUP_ROOT%" mkdir "%BACKUP_ROOT%"
+
+                set VERSION=1
+                :loop
+                if exist "%BACKUP_ROOT%\\car!VERSION!" (
+                    set /a VERSION+=1
+                    goto loop
                 )
 
-                set VERSION=%date:~-4%%date:~3,2%%date:~0,2%_%time:~0,2%%time:~3,2%%time:~6,2%
-                set VERSION=%VERSION: =0%
+                mkdir "%BACKUP_ROOT%\\car!VERSION!"
+                xcopy "%BUILD_PATH%\\*" "%BACKUP_ROOT%\\car!VERSION!\\" /E /I /Y
 
-                mkdir "%LOCAL_BACKUP%\\car_%VERSION%"
-
-                xcopy "%BUILD_PATH%\\*" "%LOCAL_BACKUP%\\car_%VERSION%\\" /E /I /Y
+                endlocal
                 """
             }
         }
 
-        stage('Fix SSH Key Permissions') {
+        // ✅ DEPLOY TO AWS (MAIN FIX)
+        stage('Deploy to AWS Nginx') {
             steps {
                 bat '''
-                icacls "C:\\jenkins\\.ssh\\ec2-key.pem" /inheritance:r
-                icacls "C:\\jenkins\\.ssh\\ec2-key.pem" /grant:r "%USERNAME%:R"
-                '''
-            }
-        }
-
-        stage('Deploy + Remote Backup + Restart Nginx') {
-            steps {
-                bat '''
-                echo Starting EC2 deployment...
+                echo Connecting to AWS...
 
                 REM 1. Create backup on EC2
                 ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "
-                    sudo mkdir -p %REMOTE_BACKUP%/car_$(date +%Y%m%d_%H%M%S)
-                    sudo cp -r %DEPLOY_PATH%/* %REMOTE_BACKUP%/car_$(date +%Y%m%d_%H%M%S)/ 2>/dev/null || true
+                    mkdir -p %REMOTE_BACKUP%/car_$(date +%Y%m%d_%H%M%S)
+                    cp -r %DEPLOY_PATH%/* %REMOTE_BACKUP%/car_$(date +%Y%m%d_%H%M%S)/ 2>/dev/null || true
                 "
 
                 REM 2. Clean old deployment
-                ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP "
+                ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "
                     sudo rm -rf %DEPLOY_PATH%/*
                 "
 
-                REM 3. Deploy new build
+                REM 3. Upload new build
                 scp -i "%KEY_PATH%" -o StrictHostKeyChecking=no -r %BUILD_PATH%/. %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
 
                 REM 4. Restart nginx
-                ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP "
+                ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "
                     sudo systemctl restart nginx
                 "
                 '''
@@ -104,12 +98,11 @@ pipeline {
     }
 
     post {
-
         success {
             emailext(
                 to: "${EMAIL_TO}",
-                subject: "SUCCESS: Angular deployed (EC2 + Local backup)",
-                body: "Deployment successful. Local + EC2 backups created."
+                subject: "SUCCESS: AWS Nginx Deployment",
+                body: "Build deployed successfully with backups (local + EC2)"
             )
         }
 
