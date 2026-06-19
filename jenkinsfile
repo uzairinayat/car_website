@@ -10,9 +10,7 @@ pipeline {
 
         DEPLOY_PATH = "/usr/share/nginx/html/car"
 
-        REMOTE_BACKUP = "/home/ec2-user/car_backups"
-
-        LOCAL_BACKUP = "C:\\jenkins_backups\\car"
+        KEY_PATH = "C:\\jenkins\\.ssh\\ec2-key.pem"
 
         EMAIL_TO = "uzairinayat42@gmail.com"
     }
@@ -43,45 +41,30 @@ pipeline {
             }
         }
 
-        stage('Create Local Backup') {
+        stage('Fix Key Permissions (IMPORTANT)') {
             steps {
                 bat """
-                if not exist "%LOCAL_BACKUP%" mkdir "%LOCAL_BACKUP%"
+                echo Fixing SSH key permissions...
 
-                set VERSION=1
-                :loop
-                if exist "%LOCAL_BACKUP%\\car%VERSION%" (
-                    set /a VERSION+=1
-                    goto loop
-                )
-
-                mkdir "%LOCAL_BACKUP%\\car%VERSION%"
-                xcopy "%BUILD_PATH%\\*" "%LOCAL_BACKUP%\\car%VERSION%\\" /E /I /Y
+                icacls "%KEY_PATH%" /inheritance:r
+                icacls "%KEY_PATH%" /grant:r "%USERNAME%:R"
                 """
             }
         }
 
         stage('Deploy to AWS Nginx') {
             steps {
-                sshagent(['ec2-ssh']) {
-                    bat """
-                    echo ===== DEPLOYING TO AWS =====
+                bat """
+                echo ===== START DEPLOYMENT =====
 
-                    REM 1. Create backup folder on EC2
-                    ssh %EC2_USER%@%EC2_IP% "mkdir -p %REMOTE_BACKUP%"
+                REM Upload build
+                scp -i "%KEY_PATH%" -o StrictHostKeyChecking=no -r %BUILD_PATH%/. %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
 
-                    REM 2. Clear old deployment
-                    ssh %EC2_USER%@%EC2_IP% "rm -rf %DEPLOY_PATH%/*"
+                REM Restart nginx
+                ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "sudo systemctl restart nginx || systemctl restart nginx"
 
-                    REM 3. Upload new build
-                    scp -r %BUILD_PATH%/. %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
-
-                    REM 4. Restart nginx
-                    ssh %EC2_USER%@%EC2_IP "sudo systemctl restart nginx || systemctl restart nginx"
-
-                    echo ===== DEPLOYMENT DONE =====
-                    """
-                }
+                echo ===== DEPLOYMENT COMPLETE =====
+                """
             }
         }
     }
@@ -90,8 +73,8 @@ pipeline {
         success {
             emailext(
                 to: "${EMAIL_TO}",
-                subject: "SUCCESS: AWS Deployment Complete",
-                body: "Angular app deployed successfully to AWS Nginx"
+                subject: "SUCCESS: AWS Deployment",
+                body: "Angular app deployed successfully to Nginx"
             )
         }
 
@@ -99,7 +82,7 @@ pipeline {
             emailext(
                 to: "${EMAIL_TO}",
                 subject: "FAILED: AWS Deployment",
-                body: "Check Jenkins logs for errors"
+                body: "Check Jenkins logs"
             )
         }
     }
