@@ -2,19 +2,14 @@ pipeline {
     agent any
 
     environment {
-        // Angular build output
+        TOMCAT_HOME = "C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0"
+        DEPLOY_PATH = "${TOMCAT_HOME}\\webapps\\car"
+
         BUILD_PATH = "dist/car_website/browser"
 
-        // EC2 details
-        EC2_IP = "34.196.168.199"
-        EC2_USER = "ec2-user"
-        DEPLOY_PATH = "/usr/share/nginx/html/car"
-
-        // Email
         EMAIL_TO = "uzairinayat42@gmail.com"
 
-        // SSH Key (IMPORTANT FIXED PATH)
-        KEY_PATH = "C:\\jenkins\\.ssh\\ec2-key.pem"
+        TOMCAT_SERVICE = "Tomcat9"
     }
 
     stages {
@@ -27,87 +22,73 @@ pipeline {
 
         stage('Install Dependencies') {
             steps {
-                bat '''
-                npm install
-                '''
+                bat 'npm install'
             }
         }
 
         stage('Build Angular App') {
             steps {
-                bat '''
-                npx ng build --configuration production --base-href=/car/
-                '''
+                bat "npx ng build --configuration production --base-href=/car/"
             }
         }
 
-        stage('Verify Build Exists') {
+        stage('Verify Build Output') {
             steps {
-                bat '''
-                if not exist "%BUILD_PATH%" (
-                    echo BUILD FAILED - DIST FOLDER NOT FOUND
-                    exit /b 1
-                )
-                echo Build folder exists: %BUILD_PATH%
-                '''
+                bat "dir %BUILD_PATH%"
             }
         }
 
-        stage('Fix SSH Key Permissions') {
+        stage('Clean Old Deployment') {
             steps {
-                bat '''
-                echo Fixing SSH key permissions...
-
-                icacls "%KEY_PATH%" /inheritance:r
-                icacls "%KEY_PATH%" /grant:r "SYSTEM:(R)"
-                '''
+                bat """
+                if exist "%DEPLOY_PATH%" (
+                    echo Removing old deployment...
+                    rmdir /s /q "%DEPLOY_PATH%"
+                )
+                """
             }
         }
 
-        stage('Deploy to EC2 Nginx') {
+        stage('Deploy to Tomcat') {
             steps {
-                bat '''
-                echo Deploying Angular build to EC2...
+                bat """
+                echo Deploying to Tomcat...
 
-                scp -i "%KEY_PATH%" ^
-                -o StrictHostKeyChecking=no ^
-                -r %BUILD_PATH%/. ^
-                %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
+                xcopy "%BUILD_PATH%\\*" "%DEPLOY_PATH%\\" /E /I /Y
 
-                if errorlevel 1 (
-                    echo SCP FAILED
+                if %ERRORLEVEL% NEQ 0 (
+                    echo DEPLOY FAILED
                     exit /b 1
                 )
+                """
+            }
+        }
 
-                ssh -i "%KEY_PATH%" ^
-                -o StrictHostKeyChecking=no ^
-                %EC2_USER%@%EC2_IP% "sudo systemctl restart nginx"
+        stage('Restart Tomcat') {
+            steps {
+                bat """
+                echo Restarting Tomcat...
 
-                if errorlevel 1 (
-                    echo SSH FAILED
-                    exit /b 1
-                )
-
-                echo DEPLOYMENT SUCCESSFUL
-                '''
+                net stop %TOMCAT_SERVICE%
+                net start %TOMCAT_SERVICE%
+                """
             }
         }
     }
 
     post {
-
         success {
             emailext(
                 to: "${EMAIL_TO}",
-                subject: "SUCCESS: Angular Deployed to EC2",
-                body: "Deployment successful. App is live at http://${EC2_IP}/car/"
+                subject: "SUCCESS: Angular deployed to Tomcat",
+                body: "Deployment completed successfully on Tomcat server"
             )
         }
 
         failure {
             emailext(
                 to: "${EMAIL_TO}",
-                subject: "FAILED: Deployment Pipeline",
+                subject: "FAILED: Jenkins Deployment",
                 body: "Check Jenkins logs for errors"
             )
         }
