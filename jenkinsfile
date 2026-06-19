@@ -32,12 +32,12 @@ pipeline {
 
         stage('Deploy to EC2 Nginx') {
             steps {
-               bat """
+                bat """
                 echo Deploying to EC2...
-                
-                scp -i "C:\\jenkins\\ec2-key.pem" -o StrictHostKeyChecking=no -r %BUILD_PATH%/* %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
-                
-                ssh -i "C:\\jenkins\\ec2-key.pem" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP "sudo systemctl restart nginx"
+        
+                scp -i "%KEY_PATH%" -o StrictHostKeyChecking=no -r %BUILD_PATH%/. %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
+        
+                ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP "sudo systemctl restart nginx"
                 """
             }
         }
