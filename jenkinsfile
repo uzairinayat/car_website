@@ -3,13 +3,11 @@ pipeline {
 
     environment {
         BUILD_PATH = "dist/car_website/browser"
-
         EC2_IP = "34.196.168.199"
         EC2_USER = "ec2-user"
-
         DEPLOY_PATH = "/usr/share/nginx/html/car"
-
         EMAIL_TO = "uzairinayat42@gmail.com"
+        KEY_PATH = "C:\\Program Files\\Jenkins\\ec2-key.pem"
     }
 
     stages {
@@ -34,15 +32,13 @@ pipeline {
 
         stage('Deploy to EC2 Nginx') {
             steps {
-                sshagent(['ec2-ssh']) {
-                    bat """
-                    echo Deploying to Nginx server...
+                bat """
+                echo Deploying to EC2...
 
-                    scp -o StrictHostKeyChecking=no -r %BUILD_PATH%/* %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
+                scp -i %KEY_PATH% -o StrictHostKeyChecking=no -r %BUILD_PATH%/* %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
 
-                    ssh -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP "sudo systemctl restart nginx"
-                    """
-                }
+                ssh -i %KEY_PATH% -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP "sudo systemctl restart nginx"
+                """
             }
         }
     }
@@ -51,8 +47,8 @@ pipeline {
         success {
             emailext(
                 to: "${EMAIL_TO}",
-                subject: "SUCCESS: Angular Deployed to Nginx",
-                body: "Deployment successful on AWS EC2 Nginx server"
+                subject: "SUCCESS: Angular Deployed",
+                body: "Deployment successful on EC2 Nginx"
             )
         }
 
