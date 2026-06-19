@@ -7,7 +7,7 @@ pipeline {
         EC2_USER = "ec2-user"
         DEPLOY_PATH = "/usr/share/nginx/html/car"
         EMAIL_TO = "uzairinayat42@gmail.com"
-        KEY_PATH = "C:\\Program Files\\Jenkins\\ec2-key.pem"
+        KEY_PATH = "C:\\jenkins\\ec2-key.pem"
     }
 
     stages {
@@ -32,12 +32,12 @@ pipeline {
 
         stage('Deploy to EC2 Nginx') {
             steps {
-                bat """
+               bat """
                 echo Deploying to EC2...
-
-                scp -i %KEY_PATH% -o StrictHostKeyChecking=no -r %BUILD_PATH%/* %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
-
-                ssh -i %KEY_PATH% -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP "sudo systemctl restart nginx"
+                
+                scp -i "C:\\jenkins\\ec2-key.pem" -o StrictHostKeyChecking=no -r %BUILD_PATH%/* %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
+                
+                ssh -i "C:\\jenkins\\ec2-key.pem" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP "sudo systemctl restart nginx"
                 """
             }
         }
