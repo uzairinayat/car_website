@@ -69,7 +69,7 @@ pipeline {
                 ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "mkdir -p %REMOTE_BACKUP%"
 
                 ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "
-                    cp -r %DEPLOY_PATH% %REMOTE_BACKUP%/backup_$(date +%Y%m%d_%H%M%S) 2>/dev/null || true
+                    cp -r %DEPLOY_PATH% %REMOTE_BACKUP%/backup_(date +%Y%m%d_%H%M%S) 2>/dev/null || true
                 "
 
                 REM STEP 2: Clear old files
@@ -99,7 +99,7 @@ pipeline {
     post {
         success {
             emailext(
-                to: "${EMAIL_TO}",
+                to: "{EMAIL_TO}",
                 subject: "SUCCESS: AWS Nginx Deployment",
                 body: "Deployment successful. App is live on EC2."
             )
@@ -107,7 +107,7 @@ pipeline {
 
         failure {
             emailext(
-                to: "${EMAIL_TO}",
+                to: "{EMAIL_TO}",
                 subject: "FAILED: AWS Deployment",
                 body: "Check Jenkins logs for errors."
             )
