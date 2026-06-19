@@ -10,7 +10,11 @@ pipeline {
 
         DEPLOY_PATH = "/usr/share/nginx/html/car"
 
-        BACKUP_PATH = "/home/ec2-user/car_backups"
+        // EC2 backup folder
+        REMOTE_BACKUP = "/home/ec2-user/car_backups"
+
+        // LOCAL backup folder (Windows Jenkins machine)
+        LOCAL_BACKUP = "C:\\jenkins_backups\\car"
 
         KEY_PATH = "C:\\jenkins\\.ssh\\ec2-key.pem"
 
@@ -43,6 +47,25 @@ pipeline {
             }
         }
 
+        stage('Create LOCAL Backup') {
+            steps {
+                bat """
+                echo Creating local backup...
+
+                if not exist "%LOCAL_BACKUP%" (
+                    mkdir "%LOCAL_BACKUP%"
+                )
+
+                set VERSION=%date:~-4%%date:~3,2%%date:~0,2%_%time:~0,2%%time:~3,2%%time:~6,2%
+                set VERSION=%VERSION: =0%
+
+                mkdir "%LOCAL_BACKUP%\\car_%VERSION%"
+
+                xcopy "%BUILD_PATH%\\*" "%LOCAL_BACKUP%\\car_%VERSION%\\" /E /I /Y
+                """
+            }
+        }
+
         stage('Fix SSH Key Permissions') {
             steps {
                 bat '''
@@ -52,25 +75,26 @@ pipeline {
             }
         }
 
-        stage('Backup + Deploy to EC2 Nginx') {
+        stage('Deploy + Remote Backup + Restart Nginx') {
             steps {
                 bat '''
-                echo Starting deployment...
+                echo Starting EC2 deployment...
 
-                REM Create backup folder on EC2 (versioned backup)
+                REM 1. Create backup on EC2
                 ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "
-                    mkdir -p %BACKUP_PATH%/car_$(date +%Y%m%d_%H%M%S)
-                    cp -r %DEPLOY_PATH%/* %BACKUP_PATH%/car_$(date +%Y%m%d_%H%M%S)/ 2>/dev/null || true
+                    sudo mkdir -p %REMOTE_BACKUP%/car_$(date +%Y%m%d_%H%M%S)
+                    sudo cp -r %DEPLOY_PATH%/* %REMOTE_BACKUP%/car_$(date +%Y%m%d_%H%M%S)/ 2>/dev/null || true
                 "
 
-                REM Clean old deployment + deploy new build
+                REM 2. Clean old deployment
                 ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP "
                     sudo rm -rf %DEPLOY_PATH%/*
                 "
 
+                REM 3. Deploy new build
                 scp -i "%KEY_PATH%" -o StrictHostKeyChecking=no -r %BUILD_PATH%/. %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
 
-                REM Restart nginx
+                REM 4. Restart nginx
                 ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP "
                     sudo systemctl restart nginx
                 "
@@ -84,8 +108,8 @@ pipeline {
         success {
             emailext(
                 to: "${EMAIL_TO}",
-                subject: "SUCCESS: Angular deployed to AWS Nginx",
-                body: "Deployment successful. App live at http://${EC2_IP}/car/"
+                subject: "SUCCESS: Angular deployed (EC2 + Local backup)",
+                body: "Deployment successful. Local + EC2 backups created."
             )
         }
 
