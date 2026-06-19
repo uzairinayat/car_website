@@ -2,12 +2,12 @@ pipeline {
     agent any
 
     environment {
-        TOMCAT_HOME = "C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0"
-        DEPLOY_PATH = "${TOMCAT_HOME}\\webapps\\car"
+        BUILD_PATH = "dist/car_website/browser"
 
-        BUILD_PATH = "dist\\car_website\\browser"
+        EC2_IP = "34.196.168.199"
+        EC2_USER = "ec2-user"
 
-        BACKUP_ROOT = "C:\\jenkins_backups\\car"
+        DEPLOY_PATH = "/usr/share/nginx/html/car"
 
         EMAIL_TO = "uzairinayat42@gmail.com"
     }
@@ -32,43 +32,17 @@ pipeline {
             }
         }
 
-        stage('Create Versioned Backup + Deploy') {
+        stage('Deploy to EC2 Nginx') {
             steps {
-                bat """
-                setlocal enabledelayedexpansion
+                sshagent(['ec2-ssh']) {
+                    bat """
+                    echo Deploying to Nginx server...
 
-                REM Find next version number
-                set VERSION=1
+                    scp -o StrictHostKeyChecking=no -r %BUILD_PATH%/* %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
 
-                :loop
-                if exist "%BACKUP_ROOT%\\car!VERSION!" (
-                    set /a VERSION+=1
-                    goto loop
-                )
-
-                REM Create backup folder
-                mkdir "%BACKUP_ROOT%\\car!VERSION!"
-
-                REM Backup old deployment if exists
-                if exist "%DEPLOY_PATH%" (
-                    xcopy "%DEPLOY_PATH%\\*" "%BACKUP_ROOT%\\car!VERSION!\\" /E /I /Y
-                    rmdir /s /q "%DEPLOY_PATH%"
-                )
-
-                REM Deploy new build
-                xcopy "%BUILD_PATH%\\*" "%DEPLOY_PATH%\\" /E /I /Y
-
-                endlocal
-                """
-            }
-        }
-
-        stage('Restart Tomcat') {
-            steps {
-                bat """
-                net stop Tomcat9
-                net start Tomcat9
-                """
+                    ssh -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP "sudo systemctl restart nginx"
+                    """
+                }
             }
         }
     }
@@ -77,8 +51,8 @@ pipeline {
         success {
             emailext(
                 to: "${EMAIL_TO}",
-                subject: "SUCCESS: Build Deployed",
-                body: "New build deployed and backup created in C:\\jenkins_backups"
+                subject: "SUCCESS: Angular Deployed to Nginx",
+                body: "Deployment successful on AWS EC2 Nginx server"
             )
         }
 
@@ -86,7 +60,7 @@ pipeline {
             emailext(
                 to: "${EMAIL_TO}",
                 subject: "FAILED: Deployment",
-                body: "Pipeline failed. Check Jenkins logs."
+                body: "Check Jenkins logs"
             )
         }
     }
