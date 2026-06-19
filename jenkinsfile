@@ -2,27 +2,11 @@ pipeline {
     agent any
 
     environment {
-
-        // Angular build output
         BUILD_PATH = "dist\\car_website\\browser"
-
-        // AWS EC2
         EC2_IP = "34.196.168.199"
         EC2_USER = "ec2-user"
-
-        // IMPORTANT: use FULL working key path
         KEY_PATH = "C:\\jenkins\\.ssh\\ec2-key.pem"
-
-        // Nginx path on EC2
         DEPLOY_PATH = "/usr/share/nginx/html/car"
-
-        // Remote backup folder
-        REMOTE_BACKUP = "/home/ec2-user/car_backups"
-
-        // Local backup on Windows
-        LOCAL_BACKUP = "C:\\jenkins_backups\\car"
-
-        EMAIL_TO = "uzairinayat42@gmail.com"
     }
 
     stages {
@@ -39,58 +23,31 @@ pipeline {
             }
         }
 
-        stage('Build Angular App') {
+        stage('Build') {
             steps {
-                bat "npx ng build --configuration production --base-href=/car/"
+                bat 'npx ng build --configuration production --base-href=/car/'
             }
         }
 
         stage('Verify Build') {
             steps {
-                bat "dir %BUILD_PATH%"
+                bat 'dir dist\\car_website\\browser'
             }
         }
 
-        stage('Local Backup') {
+        stage('Deploy to EC2') {
             steps {
                 bat """
-                if not exist "%LOCAL_BACKUP%" mkdir "%LOCAL_BACKUP%"
-                xcopy "%BUILD_PATH%\\*" "%LOCAL_BACKUP%\\" /E /I /Y
-                """
-            }
-        }
+                echo Deploying to EC2...
 
-        stage('Deploy to AWS (Nginx)') {
-            steps {
-                bat """
-                echo ===== STARTING DEPLOYMENT =====
+                REM 1. Clear old files
+                ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "rm -rf %DEPLOY_PATH%/*"
 
-                REM STEP 1: Create remote backup (safe fallback)
-                ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "mkdir -p %REMOTE_BACKUP%"
-
-                ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "
-                    cp -r %DEPLOY_PATH% %REMOTE_BACKUP%/backup_(date +%Y%m%d_%H%M%S) 2>/dev/null || true
-                "
-
-                REM STEP 2: Clear old files
-                ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "
-                    sudo rm -rf %DEPLOY_PATH%/*
-                "
-
-                REM STEP 3: Deploy new build
+                REM 2. Upload new build
                 scp -i "%KEY_PATH%" -o StrictHostKeyChecking=no -r %BUILD_PATH%/. %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
 
-                REM STEP 4: Fix permissions
-                ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "
-                    sudo chown -R ec2-user:ec2-user %DEPLOY_PATH%
-                "
-
-                REM STEP 5: Restart nginx
-                ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "
-                    sudo systemctl restart nginx
-                "
-
-                echo ===== DEPLOYMENT COMPLETE =====
+                REM 3. Restart nginx
+                ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "sudo systemctl restart nginx || systemctl restart nginx"
                 """
             }
         }
@@ -98,19 +55,15 @@ pipeline {
 
     post {
         success {
-            emailext(
-                to: "{EMAIL_TO}",
-                subject: "SUCCESS: AWS Nginx Deployment",
-                body: "Deployment successful. App is live on EC2."
-            )
+            emailext to: 'uzairinayat42@gmail.com',
+                     subject: 'SUCCESS: AWS Deploy',
+                     body: 'Deployment successful'
         }
 
         failure {
-            emailext(
-                to: "{EMAIL_TO}",
-                subject: "FAILED: AWS Deployment",
-                body: "Check Jenkins logs for errors."
-            )
+            emailext to: 'uzairinayat42@gmail.com',
+                     subject: 'FAILED: AWS Deploy',
+                     body: 'Check Jenkins logs'
         }
     }
 }
