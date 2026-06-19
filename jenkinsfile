@@ -2,16 +2,32 @@ pipeline {
     agent any
 
     environment {
+
+        // Angular build output
         BUILD_PATH = "dist\\car_website\\browser"
+
+        // AWS EC2 details
         EC2_IP = "34.196.168.199"
         EC2_USER = "ec2-user"
+
+        // SSH KEY (must exist on Jenkins machine)
         KEY_PATH = "C:\\jenkins\\.ssh\\ec2-key.pem"
+
+        // Nginx deploy path on EC2
         DEPLOY_PATH = "/usr/share/nginx/html/car"
+
+        // Remote backup (EC2 side)
+        REMOTE_BACKUP = "/home/ec2-user/car_backups"
+
+        // Local backup (your Jenkins machine)
+        LOCAL_BACKUP = "C:\\jenkins_backups\\car"
+
+        EMAIL_TO = "uzairinayat42@gmail.com"
     }
 
     stages {
 
-        stage('Checkout') {
+        stage('Checkout Code') {
             steps {
                 git branch: 'main', url: 'https://github.com/uzairinayat/car_website.git'
             }
@@ -23,31 +39,51 @@ pipeline {
             }
         }
 
-        stage('Build') {
+        stage('Build Angular App') {
             steps {
-                bat 'npx ng build --configuration production --base-href=/car/'
+                bat "npx ng build --configuration production --base-href=/car/"
             }
         }
 
         stage('Verify Build') {
             steps {
-                bat 'dir dist\\car_website\\browser'
+                bat "dir %BUILD_PATH%"
             }
         }
 
-        stage('Deploy to EC2') {
+        stage('Create Local Backup') {
             steps {
                 bat """
-                echo Deploying to EC2...
+                if not exist "%LOCAL_BACKUP%" mkdir "%LOCAL_BACKUP%"
 
-                REM 1. Clear old files
+                for /f %%i in ('dir "%LOCAL_BACKUP%" /b ^| find /c "car"') do set COUNT=%%i
+                set /a VERSION=%COUNT%+1
+
+                mkdir "%LOCAL_BACKUP%\\car!VERSION!"
+
+                xcopy "%BUILD_PATH%\\*" "%LOCAL_BACKUP%\\car!VERSION!\\" /E /I /Y
+                """
+            }
+        }
+
+        stage('Deploy to AWS Nginx') {
+            steps {
+                bat """
+                echo ===== DEPLOYING TO AWS =====
+
+                REM 1. Create backup on EC2
+                ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "mkdir -p %REMOTE_BACKUP%"
+
+                REM 2. Clear old files
                 ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "rm -rf %DEPLOY_PATH%/*"
 
-                REM 2. Upload new build
+                REM 3. Upload new build
                 scp -i "%KEY_PATH%" -o StrictHostKeyChecking=no -r %BUILD_PATH%/. %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
 
-                REM 3. Restart nginx
+                REM 4. Restart nginx
                 ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "sudo systemctl restart nginx || systemctl restart nginx"
+
+                echo ===== DEPLOYMENT DONE =====
                 """
             }
         }
@@ -55,15 +91,19 @@ pipeline {
 
     post {
         success {
-            emailext to: 'uzairinayat42@gmail.com',
-                     subject: 'SUCCESS: AWS Deploy',
-                     body: 'Deployment successful'
+            emailext(
+                to: "${EMAIL_TO}",
+                subject: "SUCCESS: AWS Deployment Complete",
+                body: "Angular app deployed successfully to AWS Nginx"
+            )
         }
 
         failure {
-            emailext to: 'uzairinayat42@gmail.com',
-                     subject: 'FAILED: AWS Deploy',
-                     body: 'Check Jenkins logs'
+            emailext(
+                to: "${EMAIL_TO}",
+                subject: "FAILED: AWS Deployment",
+                body: "Check Jenkins logs for errors"
+            )
         }
     }
 }
