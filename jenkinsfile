@@ -2,26 +2,32 @@ pipeline {
     agent any
 
     environment {
+
+        // Angular build output
         BUILD_PATH = "dist\\car_website\\browser"
 
-        // AWS CONFIG
+        // AWS EC2
         EC2_IP = "34.196.168.199"
         EC2_USER = "ec2-user"
+
+        // IMPORTANT: use FULL working key path
         KEY_PATH = "C:\\jenkins\\.ssh\\ec2-key.pem"
 
-        // SERVER PATHS
+        // Nginx path on EC2
         DEPLOY_PATH = "/usr/share/nginx/html/car"
+
+        // Remote backup folder
         REMOTE_BACKUP = "/home/ec2-user/car_backups"
 
-        // LOCAL BACKUP
-        BACKUP_ROOT = "C:\\jenkins_backups\\car"
+        // Local backup on Windows
+        LOCAL_BACKUP = "C:\\jenkins_backups\\car"
 
         EMAIL_TO = "uzairinayat42@gmail.com"
     }
 
     stages {
 
-        stage('Checkout Code') {
+        stage('Checkout') {
             steps {
                 git branch: 'main', url: 'https://github.com/uzairinayat/car_website.git'
             }
@@ -45,54 +51,47 @@ pipeline {
             }
         }
 
-        // ✅ LOCAL BACKUP (same as your logic, improved)
         stage('Local Backup') {
             steps {
                 bat """
-                setlocal enabledelayedexpansion
-
-                if not exist "%BACKUP_ROOT%" mkdir "%BACKUP_ROOT%"
-
-                set VERSION=1
-                :loop
-                if exist "%BACKUP_ROOT%\\car!VERSION!" (
-                    set /a VERSION+=1
-                    goto loop
-                )
-
-                mkdir "%BACKUP_ROOT%\\car!VERSION!"
-                xcopy "%BUILD_PATH%\\*" "%BACKUP_ROOT%\\car!VERSION!\\" /E /I /Y
-
-                endlocal
+                if not exist "%LOCAL_BACKUP%" mkdir "%LOCAL_BACKUP%"
+                xcopy "%BUILD_PATH%\\*" "%LOCAL_BACKUP%\\" /E /I /Y
                 """
             }
         }
 
-        // ✅ DEPLOY TO AWS (MAIN FIX)
-        stage('Deploy to AWS Nginx') {
+        stage('Deploy to AWS (Nginx)') {
             steps {
-                bat '''
-                echo Connecting to AWS...
+                bat """
+                echo ===== STARTING DEPLOYMENT =====
 
-                REM 1. Create backup on EC2
+                REM STEP 1: Create remote backup (safe fallback)
+                ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "mkdir -p %REMOTE_BACKUP%"
+
                 ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "
-                    mkdir -p %REMOTE_BACKUP%/car_$(date +%Y%m%d_%H%M%S)
-                    cp -r %DEPLOY_PATH%/* %REMOTE_BACKUP%/car_$(date +%Y%m%d_%H%M%S)/ 2>/dev/null || true
+                    cp -r %DEPLOY_PATH% %REMOTE_BACKUP%/backup_$(date +%Y%m%d_%H%M%S) 2>/dev/null || true
                 "
 
-                REM 2. Clean old deployment
+                REM STEP 2: Clear old files
                 ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "
                     sudo rm -rf %DEPLOY_PATH%/*
                 "
 
-                REM 3. Upload new build
+                REM STEP 3: Deploy new build
                 scp -i "%KEY_PATH%" -o StrictHostKeyChecking=no -r %BUILD_PATH%/. %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
 
-                REM 4. Restart nginx
+                REM STEP 4: Fix permissions
+                ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "
+                    sudo chown -R ec2-user:ec2-user %DEPLOY_PATH%
+                "
+
+                REM STEP 5: Restart nginx
                 ssh -i "%KEY_PATH%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "
                     sudo systemctl restart nginx
                 "
-                '''
+
+                echo ===== DEPLOYMENT COMPLETE =====
+                """
             }
         }
     }
@@ -102,15 +101,15 @@ pipeline {
             emailext(
                 to: "${EMAIL_TO}",
                 subject: "SUCCESS: AWS Nginx Deployment",
-                body: "Build deployed successfully with backups (local + EC2)"
+                body: "Deployment successful. App is live on EC2."
             )
         }
 
         failure {
             emailext(
                 to: "${EMAIL_TO}",
-                subject: "FAILED: Deployment",
-                body: "Check Jenkins logs"
+                subject: "FAILED: AWS Deployment",
+                body: "Check Jenkins logs for errors."
             )
         }
     }
