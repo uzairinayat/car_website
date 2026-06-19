@@ -7,7 +7,7 @@ pipeline {
         EC2_USER = "ec2-user"
         DEPLOY_PATH = "/usr/share/nginx/html/car"
         EMAIL_TO = "uzairinayat42@gmail.com"
-        KEY_PATH = "C:\\jenkins\\ec2-key.pem"
+        KEY_PATH = "C:\\jenkins\\.ssh\\ec2-key.pem"
     }
 
     stages {
