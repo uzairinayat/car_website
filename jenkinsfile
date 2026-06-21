@@ -2,92 +2,70 @@ pipeline {
     agent any
 
     environment {
-        TOMCAT_HOME = "C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0"
-        DEPLOY_PATH = "${TOMCAT_HOME}\\webapps\\car"
-
-        BUILD_PATH = "dist\\car_website\\browser"
-
-        BACKUP_ROOT = "C:\\jenkins_backups\\car"
-
-        EMAIL_TO = "uzairinayat42@gmail.com"
+        EC2_IP = "34.196.168.199"   // 🔁 replace with your EC2 IP
+        EC2_USER = "ec2-user"
+        DEPLOY_PATH = "/var/www/html"   // Nginx path
+        BACKUP_PATH = "/var/www/backups"
     }
 
     stages {
 
         stage('Checkout Code') {
             steps {
-                git branch: 'main', url: 'https://github.com/uzairinayat/car_website.git'
+                git 'https://github.com/uzairinayat/car_website.git'
             }
         }
 
-        stage('Install Dependencies') {
+        stage('Build Angular') {
             steps {
                 bat 'npm install'
+                bat 'npm run build'
             }
         }
 
-        stage('Build Angular App') {
+        stage('Prepare Build') {
             steps {
-                bat "npx ng build --configuration production --base-href=/car/"
+                // Angular build output (browser folder)
+                dir('dist') {
+                    bat 'dir'
+                }
             }
         }
 
-        stage('Create Versioned Backup + Deploy') {
+        stage('Deploy to EC2') {
             steps {
-                bat """
-                setlocal enabledelayedexpansion
+                sshagent(['ec2-key']) {
 
-                REM Find next version number
-                set VERSION=1
+                    // Create backup on EC2
+                    bat """
+                    ssh -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% ^
+                    "mkdir -p %BACKUP_PATH% && \
+                    if [ -d %DEPLOY_PATH% ]; then \
+                    cp -r %DEPLOY_PATH% %BACKUP_PATH%/backup_\$(date +%Y%m%d_%H%M%S); \
+                    fi"
+                    """
 
-                :loop
-                if exist "%BACKUP_ROOT%\\car!VERSION!" (
-                    set /a VERSION+=1
-                    goto loop
-                )
+                    // Remove old files
+                    bat """
+                    ssh %EC2_USER%@%EC2_IP% "rm -rf %DEPLOY_PATH%/*"
+                    """
 
-                REM Create backup folder
-                mkdir "%BACKUP_ROOT%\\car!VERSION!"
-
-                REM Backup old deployment if exists
-                if exist "%DEPLOY_PATH%" (
-                    xcopy "%DEPLOY_PATH%\\*" "%BACKUP_ROOT%\\car!VERSION!\\" /E /I /Y
-                    rmdir /s /q "%DEPLOY_PATH%"
-                )
-
-                REM Deploy new build
-                xcopy "%BUILD_PATH%\\*" "%DEPLOY_PATH%\\" /E /I /Y
-
-                endlocal
-                """
+                    // Upload new build (browser folder only)
+                    bat """
+                    scp -r -o StrictHostKeyChecking=no dist\\browser\\* %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
+                    """
+                }
             }
         }
 
-        stage('Restart Tomcat') {
+        stage('Restart Server (Optional)') {
             steps {
-                bat """
-                net stop Tomcat9
-                net start Tomcat9
-                """
+                sshagent(['ec2-key']) {
+                    bat """
+                    ssh %EC2_USER%@%EC2_IP% "sudo systemctl restart nginx"
+                    """
+                }
             }
-        }
-    }
-
-    post {
-        success {
-            emailext(
-                to: "${EMAIL_TO}",
-                subject: "SUCCESS: Build Deployed",
-                body: "New build deployed and backup created in C:\\jenkins_backups"
-            )
-        }
-
-        failure {
-            emailext(
-                to: "${EMAIL_TO}",
-                subject: "FAILED: Deployment",
-                body: "Pipeline failed. Check Jenkins logs."
-            )
         }
     }
 }
