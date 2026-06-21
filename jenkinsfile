@@ -2,41 +2,42 @@ pipeline {
     agent any
 
     environment {
-        EC2_IP = "34.196.168.199"   // 🔁 replace with your EC2 IP
-        EC2_USER = "ec2-user"
-        DEPLOY_PATH = "/var/www/html"   // Nginx path
-        BACKUP_PATH = "/var/www/backups"
+        EC2_IP = "3.x.x.x"              // 🔁 replace with your EC2 IP
+        EC2_USER = "ec2-user"          // ubuntu if Ubuntu server
+
+        DEPLOY_PATH = "/var/www/html/car"
+        BACKUP_PATH = "/var/www/backups/car"
+
+        BUILD_PATH = "dist\\car_website\\browser"
+
+        EMAIL_TO = "uzairinayat42@gmail.com"
     }
 
     stages {
 
         stage('Checkout Code') {
             steps {
-                git 'https://github.com/uzairinayat/car_website.git'
+                git branch: 'main', url: 'https://github.com/uzairinayat/car_website.git'
             }
         }
 
-        stage('Build Angular') {
+        stage('Install Dependencies') {
             steps {
                 bat 'npm install'
-                bat 'npm run build'
             }
         }
 
-        stage('Prepare Build') {
+        stage('Build Angular App') {
             steps {
-                // Angular build output (browser folder)
-                dir('dist') {
-                    bat 'dir'
-                }
+                bat "npx ng build --configuration production --base-href=/car/"
             }
         }
 
-        stage('Deploy to EC2') {
+        stage('Deploy to Nginx (EC2)') {
             steps {
                 sshagent(['ec2-key']) {
 
-                    // Create backup on EC2
+                    // 🔁 Create backup on EC2
                     bat """
                     ssh -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% ^
                     "mkdir -p %BACKUP_PATH% && \
@@ -45,27 +46,40 @@ pipeline {
                     fi"
                     """
 
-                    // Remove old files
+                    // ❌ Remove old files
                     bat """
                     ssh %EC2_USER%@%EC2_IP% "rm -rf %DEPLOY_PATH%/*"
                     """
 
-                    // Upload new build (browser folder only)
+                    // 🚀 Upload new build (browser folder)
                     bat """
-                    scp -r -o StrictHostKeyChecking=no dist\\browser\\* %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
+                    scp -r -o StrictHostKeyChecking=no %BUILD_PATH%\\* %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
                     """
-                }
-            }
-        }
 
-        stage('Restart Server (Optional)') {
-            steps {
-                sshagent(['ec2-key']) {
+                    // 🔄 Restart Nginx
                     bat """
                     ssh %EC2_USER%@%EC2_IP% "sudo systemctl restart nginx"
                     """
                 }
             }
+        }
+    }
+
+    post {
+        success {
+            emailext(
+                to: "${EMAIL_TO}",
+                subject: "SUCCESS: Nginx Deployment",
+                body: "New Angular build deployed to EC2 Nginx successfully."
+            )
+        }
+
+        failure {
+            emailext(
+                to: "${EMAIL_TO}",
+                subject: "FAILED: Deployment",
+                body: "Pipeline failed. Check Jenkins logs."
+            )
         }
     }
 }
