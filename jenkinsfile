@@ -2,13 +2,12 @@ pipeline {
     agent any
 
     environment {
-        EC2_IP = "3.x.x.x"              // 🔁 replace with your EC2 IP
-        EC2_USER = "ec2-user"          // ubuntu if Ubuntu server
-
-        DEPLOY_PATH = "/var/www/html/car"
-        BACKUP_PATH = "/var/www/backups/car"
+        TOMCAT_HOME = "C:\\Program Files\\Apache Software Foundation\\Tomcat 9.0"
+        DEPLOY_PATH = "${TOMCAT_HOME}\\webapps\\car"
 
         BUILD_PATH = "dist\\car_website\\browser"
+
+        BACKUP_ROOT = "C:\\jenkins_backups\\car"
 
         EMAIL_TO = "uzairinayat42@gmail.com"
     }
@@ -33,34 +32,43 @@ pipeline {
             }
         }
 
-        stage('Deploy to Nginx (EC2)') {
+        stage('Create Versioned Backup + Deploy') {
             steps {
-                sshagent(['ec2-key']) {
+                bat """
+                setlocal enabledelayedexpansion
 
-                    // 🔁 Create backup on EC2
-                    bat """
-                    ssh -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% ^
-                    "mkdir -p %BACKUP_PATH% && \
-                    if [ -d %DEPLOY_PATH% ]; then \
-                    cp -r %DEPLOY_PATH% %BACKUP_PATH%/backup_\$(date +%Y%m%d_%H%M%S); \
-                    fi"
-                    """
+                REM Find next version number
+                set VERSION=1
 
-                    // ❌ Remove old files
-                    bat """
-                    ssh %EC2_USER%@%EC2_IP% "rm -rf %DEPLOY_PATH%/*"
-                    """
+                :loop
+                if exist "%BACKUP_ROOT%\\car!VERSION!" (
+                    set /a VERSION+=1
+                    goto loop
+                )
 
-                    // 🚀 Upload new build (browser folder)
-                    bat """
-                    scp -r -o StrictHostKeyChecking=no %BUILD_PATH%\\* %EC2_USER%@%EC2_IP%:%DEPLOY_PATH%/
-                    """
+                REM Create backup folder
+                mkdir "%BACKUP_ROOT%\\car!VERSION!"
 
-                    // 🔄 Restart Nginx
-                    bat """
-                    ssh %EC2_USER%@%EC2_IP% "sudo systemctl restart nginx"
-                    """
-                }
+                REM Backup old deployment if exists
+                if exist "%DEPLOY_PATH%" (
+                    xcopy "%DEPLOY_PATH%\\*" "%BACKUP_ROOT%\\car!VERSION!\\" /E /I /Y
+                    rmdir /s /q "%DEPLOY_PATH%"
+                )
+
+                REM Deploy new build
+                xcopy "%BUILD_PATH%\\*" "%DEPLOY_PATH%\\" /E /I /Y
+
+                endlocal
+                """
+            }
+        }
+
+        stage('Restart Tomcat') {
+            steps {
+                bat """
+                net stop Tomcat9
+                net start Tomcat9
+                """
             }
         }
     }
@@ -69,8 +77,8 @@ pipeline {
         success {
             emailext(
                 to: "${EMAIL_TO}",
-                subject: "SUCCESS: Nginx Deployment",
-                body: "New Angular build deployed to EC2 Nginx successfully."
+                subject: "SUCCESS: Build Deployed",
+                body: "New build deployed and backup created in C:\\jenkins_backups"
             )
         }
 
